@@ -4,6 +4,11 @@
 
 talos:
   detection:
+    # Shared confidence curve for every rate-based detector: `base` at exactly the
+    # threshold, plus `per_extra_attempt` for each failure beyond it, capped at `cap`.
+    # A burst followed by a successful login never scores below `success_floor`.
+    rate_confidence: { base: 0.70, per_extra_attempt: 0.02, cap: 0.95, success_floor: 0.90 }
+
     # Web auth brute force: many failures against one account or from one source IP.
     brute_force: { window_seconds: 120, fail_threshold: 10 }
 

@@ -8,15 +8,25 @@ almost nothing on its own.
 
 from __future__ import annotations
 
+import os
+import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from talos.core.agent_contracts import DetectionContext
+from talos.core.settings import TalosSettings
 from talos.knowledge.mitre_mapping import mitre_for
 from talos.schemas.event_schema import Actor, AuthEvent, NormalizedEvent, Target
+from talos.schemas.report_schema import IncidentReport
 from talos.schemas.verdict_schema import Evidence, ModelInfo, Scope, Verdict
+from talos.storage.event_window_store import EventWindowStore
+
+#: Where a burst of fabricated events starts. Fixed, so window maths in tests is readable.
+BURST_START = datetime(2026, 8, 15, 10, 15, 0, tzinfo=UTC)
 
 #: A cut-down standards document. ``check_structure`` reads the documented directory names out of
 #: the real document's section 2.1 tree, so the fixture must supply one in the same shape.
@@ -145,6 +155,154 @@ def sample_verdict(sample_event: NormalizedEvent) -> Verdict:
             name="none", route_reason="statistical path, no model needed", used_llm=False
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def _clean_talos_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No TALOS_* variable from the developer's shell may change what a test observes."""
+    for key in list(os.environ):
+        if key.startswith("TALOS_"):
+            monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture
+def talos_settings(tmp_path: Path) -> TalosSettings:
+    """Settings on model defaults alone -- no repository YAML, no environment."""
+    return TalosSettings.load(config_dir=tmp_path / "absent")
+
+
+class RecordingVerdictLog:
+    """In-memory stand-in for ``VerdictLogStore``."""
+
+    def __init__(self) -> None:
+        self.reports: list[IncidentReport] = []
+
+    def append(self, report: IncidentReport) -> None:
+        self.reports.append(report)
+
+
+class NullBaselineStore:
+    """Cold start for every account -- the P6 store is not built yet."""
+
+    def get(self, account: str) -> Any | None:
+        return None
+
+    def put(self, baseline: Any) -> None:
+        return None
+
+
+class RecordingModelClient:
+    """Records prompts and returns canned JSON. Calling it at all is a P2 test failure."""
+
+    def __init__(self, response: dict[str, Any] | None = None) -> None:
+        self.prompts: list[str] = []
+        self.response = response or {"confidence": 0.5, "reasoning": "stub"}
+
+    async def complete(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        schema: dict[str, Any],
+        max_tokens: int,
+        timeout_s: float,
+    ) -> dict[str, Any]:
+        self.prompts.append(prompt)
+        return self.response
+
+
+@pytest.fixture
+def detection_ctx(talos_settings: TalosSettings) -> DetectionContext:
+    """A real event window plus in-memory doubles -- no network, no database (LLD 14)."""
+    return DetectionContext(
+        event_window=EventWindowStore(
+            ttl_seconds=talos_settings.storage.event_window_ttl_seconds,
+            max_events_per_key=talos_settings.storage.event_window_max_events,
+        ),
+        baseline_store=NullBaselineStore(),
+        model_client=RecordingModelClient(),
+        settings=talos_settings,
+        verdict_log=RecordingVerdictLog(),
+    )
+
+
+def make_ssh_event_impl(
+    *,
+    account: str = "root",
+    host: str = "bastion-01",
+    source_ip: str = "203.0.113.7",
+    outcome: str = "failure",
+    offset_seconds: int = 0,
+    start: datetime = BURST_START,
+) -> NormalizedEvent:
+    """One sshd authentication event, ``offset_seconds`` into the burst."""
+    timestamp = start + timedelta(seconds=offset_seconds)
+    verb = "Failed" if outcome == "failure" else "Accepted"
+    return NormalizedEvent(
+        event_id=uuid.uuid4().hex,
+        timestamp=timestamp,
+        domain="network",
+        telemetry_source="sshd",
+        actor=Actor(source_ip=source_ip, account=account),
+        target=Target(host=host, port=22),
+        auth=AuthEvent(
+            protocol="ssh",
+            outcome=outcome,
+            reason="invalid_password" if outcome == "failure" else "accepted",
+        ),
+        raw=(
+            f"{timestamp:%b %d %H:%M:%S} {host} sshd[4242]: {verb} password for {account} "
+            f"from {source_ip} port 51234 ssh2"
+        ),
+    )
+
+
+@pytest.fixture
+def make_ssh_event() -> Callable[..., NormalizedEvent]:
+    """Expose :func:`make_ssh_event` as a fixture.
+
+    Not imported directly: with no ``__init__.py`` under ``tests/``, ``tests.conftest``
+    resolves against whatever else on ``sys.path`` is called ``tests``. Fixtures are the only
+    import-safe way to share a helper across suites.
+    """
+    return make_ssh_event_impl
+
+
+@pytest.fixture
+def ssh_events() -> Callable[..., list[NormalizedEvent]]:
+    """Factory for a burst: ``ssh_events(count=12, succeeded=True)``."""
+
+    def build(
+        count: int = 12,
+        *,
+        succeeded: bool = False,
+        account: str = "root",
+        host: str = "bastion-01",
+        source_ip: str = "203.0.113.7",
+        spacing_seconds: int = 5,
+    ) -> list[NormalizedEvent]:
+        events = [
+            make_ssh_event_impl(
+                account=account,
+                host=host,
+                source_ip=source_ip,
+                offset_seconds=index * spacing_seconds,
+            )
+            for index in range(count)
+        ]
+        if succeeded:
+            events.append(
+                make_ssh_event_impl(
+                    account=account,
+                    host=host,
+                    source_ip=source_ip,
+                    outcome="success",
+                    offset_seconds=count * spacing_seconds,
+                )
+            )
+        return events
+
+    return build
 
 
 @pytest.fixture
