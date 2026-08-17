@@ -9,9 +9,14 @@ almost nothing on its own.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+
+from talos.knowledge.mitre_mapping import mitre_for
+from talos.schemas.event_schema import Actor, AuthEvent, NormalizedEvent, Target
+from talos.schemas.verdict_schema import Evidence, ModelInfo, Scope, Verdict
 
 #: A cut-down standards document. ``check_structure`` reads the documented directory names out of
 #: the real document's section 2.1 tree, so the fixture must supply one in the same shape.
@@ -86,6 +91,60 @@ def fake_repo(tmp_path: Path) -> Path:
     (tmp_path / "db" / "migrations" / "rollback").mkdir(parents=True, exist_ok=True)
     (tmp_path / "tests" / "unit").mkdir(parents=True, exist_ok=True)
     return tmp_path
+
+
+@pytest.fixture
+def sample_event() -> NormalizedEvent:
+    """One failed SSH login -- the smallest realistic event the pipeline handles."""
+    return NormalizedEvent(
+        event_id="11111111-1111-4111-8111-111111111111",
+        timestamp=datetime(2026, 8, 19, 10, 15, 0, tzinfo=UTC),
+        domain="network",
+        telemetry_source="sshd",
+        actor=Actor(source_ip="203.0.113.7", account="root"),
+        target=Target(host="bastion-01", port=22),
+        auth=AuthEvent(protocol="ssh", outcome="failure", reason="invalid_password"),
+        raw=(
+            "Aug 19 10:15:00 bastion-01 sshd[4242]: Failed password for root "
+            "from 203.0.113.7 port 51234 ssh2"
+        ),
+    )
+
+
+@pytest.fixture
+def sample_verdict(sample_event: NormalizedEvent) -> Verdict:
+    """A statistical verdict: no model involved, evidence and confidence both present."""
+    return Verdict(
+        verdict_id="22222222-2222-4222-8222-222222222222",
+        event_ids=[sample_event.event_id],
+        detector="ssh_brute_force_detector",
+        domain="network",
+        category="network_brute_force",
+        technique="brute_force",
+        attack_detected=True,
+        confidence=0.91,
+        mitre=mitre_for("brute_force"),
+        scope=Scope(
+            affected_accounts=["root"],
+            affected_hosts=["bastion-01"],
+            attempt_count=12,
+            source_diversity=1,
+            succeeded=False,
+            window_start=datetime(2026, 8, 19, 10, 14, 0, tzinfo=UTC),
+            window_end=datetime(2026, 8, 19, 10, 15, 0, tzinfo=UTC),
+        ),
+        evidence=[
+            Evidence(
+                kind="statistic",
+                detail="12 failed ssh logins for root@bastion-01 within 120s (threshold 8)",
+                references=[sample_event.event_id],
+            )
+        ],
+        reasoning="Sustained failed-password burst against a single account from one source.",
+        model=ModelInfo(
+            name="none", route_reason="statistical path, no model needed", used_llm=False
+        ),
+    )
 
 
 @pytest.fixture
