@@ -3,10 +3,11 @@
 # call the underlying commands directly.
 
 PY ?= python
+DB ?= talos.db
 CHECKS := $(PY) tools/checks/run_all_checks.py
 
 .DEFAULT_GOAL := help
-.PHONY: help setup check check-structure check-naming check-size check-docs lint format types test gate run
+.PHONY: help setup check check-structure check-naming check-size check-docs lint format types test gate migrate run
 
 help:  ## show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -47,5 +48,8 @@ gate:  ## the phase gate: adds the R3.5 test-mirror requirement
 	$(PY) -m mypy
 	$(PY) -m pytest
 
-run:  ## scan a log file through the pipeline
-	$(PY) -m talos.cli.main_cli scan $(FILE)
+migrate:  ## apply database migrations in timestamp order (DB=talos.db)
+	$(PY) scripts/apply_migrations.py --db $(DB)
+
+run: migrate  ## scan a log file through the pipeline (FILE=path/to.log)
+	$(PY) -m talos.cli.main_cli scan $(FILE) --db $(DB)

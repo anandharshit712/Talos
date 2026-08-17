@@ -92,9 +92,10 @@ disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# tools/checks is on the path so the rule checkers are importable by their own tests,
-# while staying runnable as plain scripts (python tools/checks/run_all_checks.py).
-pythonpath = ["src", "tools/checks", "."]
+# tools/checks and scripts are on the path so the rule checkers and the migration runner are
+# importable by their tests, while staying runnable as plain scripts
+# (python tools/checks/run_all_checks.py, python scripts/apply_migrations.py).
+pythonpath = ["src", "tools/checks", "scripts", "."]
 addopts = "-q --strict-markers"
 markers = [
     "integration: multi-component tests with real wiring",
