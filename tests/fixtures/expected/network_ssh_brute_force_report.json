@@ -1,0 +1,13 @@
+{
+  "_comment": "Expected outcome for tests/fixtures/logs/network_ssh_brute_force_sshd.log. Only the stable fields are asserted -- incident_id, verdict_id, and created_at are generated per run.",
+  "domain": "network",
+  "category": "network_brute_force",
+  "severity": "high",
+  "min_confidence": 0.9,
+  "attempt_count": 12,
+  "succeeded": true,
+  "affected_accounts": ["root"],
+  "affected_hosts": ["bastion-01"],
+  "mitre_techniques": ["T1110"],
+  "used_llm": false
+}

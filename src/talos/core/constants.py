@@ -11,7 +11,7 @@ detectors through ``ctx.settings`` (standards 2.3).
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, Literal
 
 PACKAGE_NAME: Final = "talos"
 
@@ -45,8 +45,11 @@ CATEGORIES: Final[tuple[str, ...]] = (
 
 # --- Reporting -----------------------------------------------------------------------------
 
+#: The report severity vocabulary, mirrored by ``IncidentReport.severity``.
+Severity = Literal["info", "low", "medium", "high", "critical"]
+
 #: Severity vocabulary, least to most severe. Index order is the comparison order.
-SEVERITIES: Final[tuple[str, ...]] = ("info", "low", "medium", "high", "critical")
+SEVERITIES: Final[tuple[Severity, ...]] = ("info", "low", "medium", "high", "critical")
 
 #: ``ModelInfo.name`` when a verdict was produced with no model call at all.
 MODEL_NAME_NONE: Final = "none"

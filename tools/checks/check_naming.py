@@ -41,6 +41,7 @@ from violation_types import Violation, build_parser, find_repo_root, iter_files,
 ROLE_SUFFIXES = (
     "_parser",
     "_orchestrator",
+    "_aggregator",
     "_registry",
     "_domain_agent",
     "_type_classifier",
