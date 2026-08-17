@@ -222,16 +222,24 @@ Talos/
 │   ├── unit/                         mirrors src/talos/ tree exactly
 │   ├── integration/                  multi-component, real wiring
 │   ├── e2e/                          log file in -> IncidentReport out
+│   ├── support/                      test doubles shared across suites (stub ModelClient)
 │   └── fixtures/
 │       ├── logs/                     input log samples
 │       └── expected/                 expected JSON outputs
 │
-└── tools/
-    └── checks/
-        ├── check_file_size.py        enforces R6
-        ├── check_naming.py           enforces R3 + R4
-        ├── check_structure.py        enforces R1 + R2
-        └── check_feature_docs.py     enforces R5
+├── tools/
+│   └── checks/
+│       ├── violation_types.py        shared Violation type, traversal, reporting
+│       ├── check_structure.py        enforces R1 + R2
+│       ├── check_naming.py           enforces R3 + R4
+│       ├── check_file_size.py        enforces R6
+│       ├── check_feature_docs.py     enforces R5
+│       └── run_all_checks.py         single entry point for make / pre-commit / CI
+│
+├── .github/
+│   └── workflows/                    CI: runs the checkers, lint, types, tests
+│
+└── .claude/                          agent settings for this workspace
 ```
 
 ### 2.2 Placement decision order
