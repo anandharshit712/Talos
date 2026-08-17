@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.1 (2026-08-17) — see §16
+**Revision:** 1.2 (2026-08-17) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
 **Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the hackathon slice (Web + Network). Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
@@ -229,47 +229,55 @@ These are the extension contracts. Adding a sub-agent means implementing `Attack
 All four ABCs plus `DetectionContext` live in one module: they are a single cohesive contract surface, they
 change together, and splitting them would force circular imports. Estimated ~120 LOC.
 
+Every method is `async`: each one may sit in front of a model call, and §4.2/§12 award the
+pipeline concurrency across detectors of the same sub-agent. Statistical detectors simply never
+await (rev 1.2, §16.2).
+
 ```python
 class TypeClassifier(ABC):
-    domain: str
+    domain: ClassVar[str]
     @abstractmethod
-    def classify(self, event: NormalizedEvent) -> tuple[str, float]:
+    async def classify(self, event: NormalizedEvent, ctx: "DetectionContext") -> tuple[str, float]:
         """Return (category, confidence)."""
 
 class Detector(ABC):
-    detector_name: str
-    technique: str
-    mitre: MitreMapping
+    detector_name: ClassVar[str]
+    technique: ClassVar[str]
+    mitre: ClassVar[MitreMapping]
     @abstractmethod
-    def evaluate(self, event: NormalizedEvent, ctx: "DetectionContext") -> Verdict | None:
+    async def evaluate(self, event: NormalizedEvent, ctx: "DetectionContext") -> Verdict | None:
         """Confirm + scope one technique. None = not applicable."""
 
 class AttackTypeSubAgent(ABC):
-    category: str                    # category emitted by the classifier
+    category: ClassVar[str]          # category emitted by the classifier
     detectors: list[Detector]
     @abstractmethod
-    def handle(self, event: NormalizedEvent, ctx: "DetectionContext") -> list[Verdict]:
+    async def handle(self, event: NormalizedEvent, ctx: "DetectionContext") -> list[Verdict]:
         """Dispatch to child detectors, collect verdicts."""
 
 class DomainAgent(ABC):
-    domain: str
+    domain: ClassVar[str]
     classifier: TypeClassifier
     sub_agents: dict[str, AttackTypeSubAgent]   # category -> sub-agent
     @abstractmethod
-    def process(self, event: NormalizedEvent, ctx: "DetectionContext") -> list[Verdict]:
+    async def process(self, event: NormalizedEvent, ctx: "DetectionContext") -> list[Verdict]:
         ...
 ```
 
-`DetectionContext` carries shared services into detectors so they stay stateless themselves:
+`DetectionContext` carries shared services into detectors so they stay stateless themselves. The
+service fields are typed as `Protocol`s (`EventWindow`, `BaselineReader`, `ModelCaller`,
+`VerdictRecorder`) declared alongside the ABCs: the context is frozen in P1 while the concrete
+stores arrive in P2/P3/P6, and structural typing lets the real classes — and the in-memory doubles
+of §14 — satisfy it without an import in either direction.
 
 ```python
 @dataclass
 class DetectionContext:
-    event_window: EventWindowStore    # rolling TTL buffer for rate detectors
-    baseline_store: BaselineStore     # per-account access baselines (IDOR)
-    model_client: ModelClient         # LLM access (routed per detector)
+    event_window: EventWindow         # rolling TTL buffer for rate detectors  (EventWindowStore)
+    baseline_store: BaselineReader    # per-account access baselines, IDOR     (BaselineStore)
+    model_client: ModelCaller         # LLM access, routed per detector        (ModelClient)
     settings: TalosSettings           # loaded config (core/settings.py)
-    verdict_log: VerdictLogStore
+    verdict_log: VerdictRecorder      # audit trail                            (VerdictLogStore)
 ```
 
 ---
@@ -349,14 +357,14 @@ Classifiers run on **every event** → cheapest model tier, and use a static sho
 ```python
 class WebTypeClassifier(TypeClassifier):
     domain = "web"
-    def classify(self, event):
+    async def classify(self, event, ctx):
         # 1. cheap static signals first
         if self._looks_like_auth_endpoint(event): base = ("auth_failure", 0.6)
         elif self._has_injection_markers(event):  base = ("injection", 0.6)
         elif self._is_object_access(event):        base = ("broken_access_control", 0.5)
         else:                                       base = ("unclassified", 0.3)
         # 2. small LLM refines category + confidence (bounded prompt)
-        return self._model_refine(event, base)
+        return await self._model_refine(event, base, ctx)
 ```
 
 - **Output parsing:** the LLM is asked for strict JSON `{category, confidence, rationale}`; a schema-validated parse with one retry, else fall back to the static `base`.
@@ -566,11 +574,23 @@ talos:
     idor:               { min_baseline_observations: 50, sequential_run_len: 5 }
   classifier:
     min_confidence_floor: 0.35
+  llm:                      # resilience + prompt hardening (§8.3)
+    request_timeout_seconds: 20.0
+    max_retries: 1
+    fallback_confidence_penalty: 0.85
+    max_payload_chars: 2000 # attacker-controlled text is truncated before prompting
   routing: { ... }          # see §8.2
-  calibration: { ... }      # per-detector curves
+  calibration: { ... }      # per-detector curves: detector -> {parameter: float}
   output:
     sinks: [json_file, api]
+    report_dir: out/reports
 ```
+
+Every file is rooted at a single `talos:` key, which `TalosSettings.load()` strips; a stray
+top-level key is an error rather than a silently ignored setting. Precedence, lowest first:
+model defaults < `default.yaml` < `thresholds.yaml` < `model_routing.yaml` < `local.yaml` <
+`TALOS_*` environment variables. Invalid values raise `ConfigError` at load — a process whose
+thresholds did not load must not start and quietly detect nothing.
 
 ---
 
@@ -678,6 +698,24 @@ Rev 1.0's layout predated the engineering standards. Content and algorithms are 
 2. **`idor/` → `broken_access_control/`.** Rev 1.0's §6 classifier emitted category `broken_access_control` but §1 named the package `idor/`, so the sub-agent's `category` could not equal both. The package and `category` are now `broken_access_control`; `technique` stays `"idor"`. §6 now states the classifier-output ↔ category ↔ package-name equality as an explicit contract.
 
 Also renamed: routing key `access_pattern_baseliner` → `access_baseliner` (matches its module).
+
+### 16.2 Revision 1.2 — contracts made executable, P1 (2026-08-17)
+
+Rev 1.1's contracts were illustrative. P1 turned §2, §3, and §10 into shipped code
+(`schemas/`, `core/`, `knowledge/`, `config/`); the deltas below are what the implementation
+learned, recorded here so the code and this document do not drift.
+
+| Change | Where | Why |
+|---|---|---|
+| The four agent methods are `async def` | §3 | §4.2 already wrote `await agent.process(...)` and §12 requires detector calls to be awaited concurrently, while §3 showed plain `def`. An internal contradiction, resolved toward the concurrent form: statistical detectors just never await. |
+| `TypeClassifier.classify` takes `ctx` | §3, §6 | §6's `self._model_refine` implied a privately held model client, bypassing the context every other component receives. The classifier needs `ctx.model_client` and `ctx.settings.classifier.min_confidence_floor`; one delivery mechanism, not two. |
+| `DetectionContext` services typed as `Protocol`s | §3 | Contracts freeze in P1, but `EventWindowStore` (P2), `ModelClient` (P3), and `BaselineStore` (P6) do not exist yet. `EventWindow`/`BaselineReader`/`ModelCaller`/`VerdictRecorder` are satisfied structurally by the concrete stores and by the in-memory doubles of §14. |
+| `EventWindow.query(key: str, within: int)` | §3, §7.3 | §12 lists three key shapes — `(account)`, `(source_ip)`, `(host, account)`. The store takes one composed string key; `RateConfig.key_fn` owns the composition, so the store stays one lookup table rather than three. |
+| Contract invariants enforced by the models | §2.2, §2.3 | `Verdict.evidence` and `Verdict.event_ids` are non-empty, `confidence` is bounded `[0, 1]`, `IncidentReport.verdicts` is non-empty. "Fail-safe for reporting" (§11) is a property of the type, not detector discipline; an empty report is unrepresentable, so "nothing fired" can only be expressed as the orchestrator's `None`. |
+| Timestamps normalised to UTC in the schema | §2.1 | Sources report naive, local, and offset times in one corpus. Rate detectors compare across them, so normalisation happens once at the contract boundary rather than in every detector. |
+| One technique may carry several ATT&CK ids | §2.2, §7.4 | §7.4 maps IDOR to both `T1083` and `T1530`. `knowledge/mitre_mapping.py` maps a technique to an ordered tuple: `Verdict.mitre` carries the primary, `IncidentReport.mitre_techniques` carries all. `credential_stuffing` likewise carries `T1110.004` then `T1110`. |
+| `talos.llm` config block; `output.report_dir` | §8.3, §10 | §8.3 specified timeout, retry, fallback penalty, and payload bounding as behaviour but gave them no configuration home, which would have forced module-level literals (standards 2.3). |
+| `calibration` shape fixed as `detector -> {parameter: float}` | §9, §10 | §9 left the curve representation open; a concrete shape is needed before P8 can write measured curves into config. |
 
 ---
 *End of LLD.*

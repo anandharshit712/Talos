@@ -25,7 +25,27 @@ python -m ruff check . && python -m mypy && python -m pytest
 `make check` runs all of it. On Windows without `make`: `.\scripts\run_checks.ps1 -Full`.
 Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
-## Commits
+## Where the build stands
+
+**P0 and P1 are done. P2 (walking skeleton) is next.**
+[docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) is the live record —
+every phase, section, file, test, and gate. **Tick its boxes in the same commit as the work.**
+
+**The P1 contracts are frozen** (`schemas/`, `core/agent_contracts.py`). Changing
+`NormalizedEvent`, `Verdict`, `IncidentReport`, or the four ABCs requires an LLD §16 revision entry
+and a note in the tracker. What is already settled and must not be re-litigated per file:
+
+- Agent methods (`classify`, `evaluate`, `handle`, `process`) are `async` and take `ctx`.
+- `DetectionContext` services are `Protocol`s — concrete stores satisfy them structurally.
+- Settings precedence: defaults < `default.yaml` < `thresholds.yaml` < `model_routing.yaml`
+  < `local.yaml` < `TALOS_*` env. Every config file is rooted at one `talos:` key; bad values
+  raise `ConfigError` at load.
+- MITRE/OWASP come from `knowledge/`; never hand-type a technique id in a detector.
+
+## Commits and pushes
+
+**Commit freely; push only when a phase's gate has passed.** Split or squash as convenient — the
+constraint is on `git push`, not on commit count. Record the push in the tracker's dashboard.
 
 **No AI attribution in commit messages, ever.** No `Co-Authored-By: Claude` trailer, no
 "Generated with Claude Code" line, no assistant name, model name, or `claude.com` link anywhere
@@ -58,6 +78,7 @@ whether or not that setting is present.
 |---|---|
 | [docs/standards/Talos_Engineering_Standards.md](docs/standards/Talos_Engineering_Standards.md) | R1–R6 in full, enforcement, split playbook |
 | [docs/planning/Talos_Implementation_Plan.md](docs/planning/Talos_Implementation_Plan.md) | phase order, per-phase file lists and gates, cut order |
+| [docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) | what is actually finished — tick it as you go |
 | [docs/architecture/Talos_LLD.md](docs/architecture/Talos_LLD.md) | module layout, data contracts, per-detector algorithms |
 | [docs/architecture/Talos_HLD.md](docs/architecture/Talos_HLD.md) | architecture, model strategy, NFRs |
 | [docs/architecture/Talos_DFD.md](docs/architecture/Talos_DFD.md) | data flows, data dictionary |
