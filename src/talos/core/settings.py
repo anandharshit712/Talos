@@ -96,7 +96,31 @@ class IdorThresholds(_Block):
     sequential_run_len: int = Field(default=5, gt=1)
 
 
+class RateConfidenceSettings(_Block):
+    """How a rate detector turns an attempt count into a confidence (LLD 7.3.1, 9).
+
+    Shared by all four rate-based detectors, and the first thing P8 calibration will move.
+    """
+
+    base: float = Field(default=0.70, ge=0.0, le=1.0)
+    """Confidence at exactly the failure threshold."""
+    per_extra_attempt: float = Field(default=0.02, ge=0.0, le=1.0)
+    """Added for each failure above the threshold."""
+    cap: float = Field(default=0.95, ge=0.0, le=1.0)
+    success_floor: float = Field(default=0.90, ge=0.0, le=1.0)
+    """Floor applied when the burst was followed by a successful authentication."""
+
+
+class StorageSettings(_Block):
+    """Bounds on the in-memory event window (LLD 12, NFR-7)."""
+
+    event_window_ttl_seconds: int = Field(default=900, gt=0)
+    event_window_max_events: int = Field(default=2000, gt=0)
+    """Per key, not in total -- one noisy source must not evict every other key."""
+
+
 class DetectionSettings(_Block):
+    rate_confidence: RateConfidenceSettings = Field(default_factory=RateConfidenceSettings)
     brute_force: RateThresholds = Field(
         default_factory=lambda: RateThresholds(window_seconds=120, fail_threshold=10)
     )
@@ -114,6 +138,24 @@ class DetectionSettings(_Block):
 
 class ClassifierSettings(_Block):
     min_confidence_floor: float = Field(default=0.35, ge=0.0, le=1.0)
+
+
+class AggregationSettings(_Block):
+    """How verdicts combine into one incident (LLD 4.3)."""
+
+    corroboration_boost: float = Field(default=0.05, ge=0.0, le=1.0)
+    """Added to the top confidence for each *additional* detector that fired independently."""
+
+    suppress_duplicates: bool = True
+    """Report an ongoing attack once, not once per event past the threshold.
+
+    A windowed detector fires again on every subsequent event in the same burst. Emitting all of
+    them is alert spam, so the orchestrator reports the first crossing and stays quiet until the
+    incident materially escalates. Set false to see every firing.
+    """
+
+    escalation_attempt_factor: float = Field(default=2.0, ge=1.0)
+    """Re-report a suppressed incident once its attempt count grows by this factor."""
 
 
 class LlmSettings(_Block):
@@ -252,6 +294,8 @@ class TalosSettings(BaseSettings):
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
     detection: DetectionSettings = Field(default_factory=DetectionSettings)
     classifier: ClassifierSettings = Field(default_factory=ClassifierSettings)
+    aggregation: AggregationSettings = Field(default_factory=AggregationSettings)
+    storage: StorageSettings = Field(default_factory=StorageSettings)
     llm: LlmSettings = Field(default_factory=LlmSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
     routing: dict[str, ModelRoute] = Field(default_factory=dict)

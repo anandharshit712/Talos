@@ -21,6 +21,23 @@ talos:
     # A category resolved below this confidence is routed as "unclassified" instead.
     min_confidence_floor: 0.35
 
+  aggregation:
+    # Independent detectors agreeing is evidence; each extra one nudges the incident
+    # confidence up from the highest single verdict.
+    corroboration_boost: 0.05
+    # A windowed detector fires again on every event past its threshold. Report an ongoing
+    # attack once, then again only when it escalates -- it succeeded, or its attempt count
+    # grew by escalation_attempt_factor. Set false to see every firing.
+    suppress_duplicates: true
+    escalation_attempt_factor: 2.0
+
+  storage:
+    # The event window is bounded in both time and count so a long replay cannot grow
+    # without limit (NFR-7). TTL is measured in event time, not wall-clock time, so
+    # replaying a historical log behaves the same as reading a live stream.
+    event_window_ttl_seconds: 900
+    event_window_max_events: 2000
+
   llm:
     request_timeout_seconds: 20.0
     # One retry on timeout/5xx, then the configured fallback model (LLD 8.3).
