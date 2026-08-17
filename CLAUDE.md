@@ -25,6 +25,15 @@ python -m ruff check . && python -m mypy && python -m pytest
 `make check` runs all of it. On Windows without `make`: `.\scripts\run_checks.ps1 -Full`.
 Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
+## Commits
+
+**No AI attribution in commit messages, ever.** No `Co-Authored-By: Claude` trailer, no
+"Generated with Claude Code" line, no assistant name, model name, or `claude.com` link anywhere
+in the subject, body, or trailers. The same applies to pull request descriptions and branch
+names. The commit author is the human who owns the change. `.claude/settings.json` sets
+`includeCoAuthoredBy: false` so the trailer is not added in the first place; this rule stands
+whether or not that setting is present.
+
 ## Project-specific conventions
 
 - **Python 3.11+**, `src/` layout, Pydantic v2 contracts, `asyncio` orchestrator.
