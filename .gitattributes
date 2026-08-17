@@ -1,0 +1,21 @@
+# Normalise line endings in the repository to LF. Development happens on Windows and CI runs on
+# Linux; without this, every file touched on either side shows up as wholly rewritten.
+* text=auto eol=lf
+
+# Windows-only scripts are fine with LF (PowerShell accepts it), so they are not excepted here.
+
+# Binary: never diff, never convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.db binary
+*.sqlite3 binary
+
+# Captured attack traffic. Keep bytes verbatim -- a fixture is evidence, and normalising it
+# would silently alter the payloads the detectors are tested against.
+tests/fixtures/** -text
+
+# Generated docs and diagrams diff poorly but are still text.
+*.svg text
