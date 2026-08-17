@@ -1,0 +1,40 @@
+# Talos base runtime configuration (LLD 10).
+#
+# Load order, lowest precedence first:
+#   config/default.yaml  <  config/thresholds.yaml  <  config/model_routing.yaml
+#                        <  config/local.yaml (git-ignored overlay)
+#                        <  TALOS_* environment variables
+#
+# Secrets never appear in this tree. The NIM API key comes from the environment only --
+# see .env.example.
+
+talos:
+  enabled_domains: [web, network]
+
+  ingestion:
+    web:
+      formats: [combined, nginx_json, waf_json]
+    network:
+      formats: [sshd_syslog, rdp_evtx]
+
+  classifier:
+    # A category resolved below this confidence is routed as "unclassified" instead.
+    min_confidence_floor: 0.35
+
+  llm:
+    request_timeout_seconds: 20.0
+    # One retry on timeout/5xx, then the configured fallback model (LLD 8.3).
+    max_retries: 1
+    # Confidence multiplier applied when a fallback model answered instead of the primary.
+    fallback_confidence_penalty: 0.85
+    # Attacker-controlled telemetry is truncated to this many characters before it is
+    # embedded in a prompt as delimited data (HLD 11/13 prompt-injection hardening).
+    max_payload_chars: 2000
+
+  output:
+    sinks: [stdout, json_file]
+    report_dir: out/reports
+
+  # Per-detector calibration curve parameters, measured in P8 (LLD 9). Empty means
+  # "emit raw confidence", which is the honest default until the numbers exist.
+  calibration: {}

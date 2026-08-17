@@ -1,0 +1,124 @@
+"""Configuration precedence and validation (LLD 10).
+
+Precedence is the whole point of the module, so it is tested as a ladder: base files, then the
+overlay, then the environment, each beating the one below while leaving untouched keys alone.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pytest
+
+from talos.core.error_types import ConfigError
+from talos.core.settings import TalosSettings, default_config_dir
+
+BASE_YAML = """
+talos:
+  detection:
+    ssh_brute_force: { window_seconds: 120, fail_threshold: 8 }
+  classifier:
+    min_confidence_floor: 0.35
+"""
+
+
+@pytest.fixture(autouse=True)
+def _isolated_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """No TALOS_* leakage from the developer's shell, and no stray .env in the way."""
+    for key in list(os.environ):
+        if key.startswith("TALOS_"):
+            monkeypatch.delenv(key, raising=False)
+    monkeypatch.chdir(tmp_path)
+
+
+def _config_dir(tmp_path: Path, **files: str) -> Path:
+    directory = tmp_path / "config"
+    directory.mkdir(exist_ok=True)
+    (directory / "default.yaml").write_text(BASE_YAML, encoding="utf-8")
+    for name, content in files.items():
+        (directory / f"{name}.yaml").write_text(content, encoding="utf-8")
+    return directory
+
+
+def test_repository_config_loads(tmp_path: Path) -> None:
+    """The committed config/ tree is valid, which is the only way the CLI ever starts."""
+    settings = TalosSettings.load(config_dir=default_config_dir(), overlay=tmp_path / "absent.yaml")
+    assert settings.detection.ssh_brute_force.fail_threshold == 8
+    assert settings.detection.credential_stuffing.distinct_accounts == 15
+    assert settings.classifier.min_confidence_floor == 0.35
+    assert settings.llm.fallback_confidence_penalty == 0.85
+    assert settings.routing["sql_injection_detector"].tier == "code"
+    assert settings.routing["sql_injection_detector"].fallback == "meta/llama-3.1-8b-instruct"
+
+
+def test_defaults_stand_when_no_config_exists(tmp_path: Path) -> None:
+    settings = TalosSettings.load(config_dir=tmp_path / "nowhere")
+    assert settings.detection.ssh_brute_force.fail_threshold == 8
+    assert settings.enabled_domains == ["web", "network"]
+    assert settings.routing == {}
+
+
+def test_overlay_beats_base_and_leaves_siblings_alone(tmp_path: Path) -> None:
+    directory = _config_dir(tmp_path)
+    overlay = directory / "local.yaml"
+    overlay.write_text(
+        "talos:\n  detection:\n    ssh_brute_force: { fail_threshold: 3 }\n", encoding="utf-8"
+    )
+    settings = TalosSettings.load(config_dir=directory)
+    assert settings.detection.ssh_brute_force.fail_threshold == 3
+    assert settings.detection.ssh_brute_force.window_seconds == 120
+
+
+def test_environment_beats_the_overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    directory = _config_dir(tmp_path)
+    (directory / "local.yaml").write_text(
+        "talos:\n  detection:\n    ssh_brute_force: { fail_threshold: 3 }\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("TALOS_DETECTION__SSH_BRUTE_FORCE__FAIL_THRESHOLD", "2")
+    settings = TalosSettings.load(config_dir=directory)
+    assert settings.detection.ssh_brute_force.fail_threshold == 2
+    assert settings.detection.ssh_brute_force.window_seconds == 120
+
+
+def test_secrets_are_environment_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TALOS_NIM_API_KEY", "nvapi-secret")
+    settings = TalosSettings.load(config_dir=_config_dir(tmp_path))
+    assert settings.nim_api_key is not None
+    assert settings.nim_api_key.get_secret_value() == "nvapi-secret"
+    assert "nvapi-secret" not in repr(settings)
+
+
+@pytest.mark.parametrize(
+    ("content", "reason"),
+    [
+        ("talos:\n  detection:\n    ssh_brute_force: { fail_threshold: 0 }\n", "zero threshold"),
+        ("talos:\n  classifier:\n    min_confidence_flor: 0.4\n", "mistyped key"),
+        ("talos:\n  enabled_domains: [mars]\n", "unknown domain"),
+        ("detection:\n  ssh_brute_force: { fail_threshold: 4 }\n", "missing talos: root"),
+        ("talos: [not, a, mapping]\n", "root is not a mapping"),
+    ],
+)
+def test_bad_configuration_is_fatal(tmp_path: Path, content: str, reason: str) -> None:
+    """A process whose config did not load must not start and quietly detect nothing."""
+    directory = _config_dir(tmp_path)
+    (directory / "local.yaml").write_text(content, encoding="utf-8")
+    with pytest.raises(ConfigError):
+        TalosSettings.load(config_dir=directory)
+
+
+def test_config_path_environment_variable_selects_the_overlay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = _config_dir(tmp_path)
+    elsewhere = tmp_path / "elsewhere.yaml"
+    elsewhere.write_text(
+        "talos:\n  detection:\n    ssh_brute_force: { fail_threshold: 5 }\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("TALOS_CONFIG_PATH", str(elsewhere))
+    assert TalosSettings.load(config_dir=directory).detection.ssh_brute_force.fail_threshold == 5
+
+
+def test_route_for_unrouted_component_is_none(tmp_path: Path) -> None:
+    settings = TalosSettings.load(config_dir=_config_dir(tmp_path))
+    assert settings.route_for("ssrf_detector") is None

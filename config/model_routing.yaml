@@ -1,0 +1,31 @@
+# Per-agent model routing (LLD 8.2, HLD 8).
+#
+# Every key is exactly a detector_name or a classifier module stem, so a routing entry can
+# never drift from the component it routes.
+#
+# Model IDs are placeholders pending a build.nvidia.com availability check (LLD 8.2, plan P3).
+# Nothing here is load-bearing for detection: every detector produces a verdict with
+# used_llm=false when no model is reachable.
+
+talos:
+  routing:
+    web_type_classifier:
+      { model: "meta/llama-3.1-8b-instruct", tier: small }
+    network_type_classifier:
+      { model: "meta/llama-3.1-8b-instruct", tier: small }
+    sql_injection_detector:
+      { model: "meta/codellama-13b-instruct", tier: code, fallback: "meta/llama-3.1-8b-instruct" }
+    xss_detector:
+      { model: "meta/llama-3.1-8b-instruct", tier: code }
+    brute_force_detector:
+      { model: "meta/llama-3.2-3b-instruct", tier: nano }
+    credential_stuffing_detector:
+      { model: "meta/llama-3.2-3b-instruct", tier: nano }
+    ssh_brute_force_detector:
+      { model: "meta/llama-3.2-3b-instruct", tier: nano }
+    rdp_brute_force_detector:
+      { model: "meta/llama-3.2-3b-instruct", tier: nano }
+    access_baseliner:
+      { model: "mistralai/mixtral-8x7b-instruct", tier: long_context }
+    deviation_scorer:
+      { model: "meta/llama-3.1-70b-instruct", tier: heavy, fallback: "meta/llama-3.1-8b-instruct" }

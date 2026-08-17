@@ -1,0 +1,18 @@
+# Copy to config/local.yaml for developer overrides. The real file is git-ignored; only this
+# template is committed. Values here win over default.yaml / thresholds.yaml /
+# model_routing.yaml, and lose to TALOS_* environment variables.
+#
+# Only the keys you want to change need to appear -- the overlay is merged key by key.
+
+talos:
+  detection:
+    # Lower thresholds so a short hand-written fixture fires without a 200-line log.
+    ssh_brute_force: { fail_threshold: 3 }
+
+  llm:
+    # Fail fast instead of waiting on an unreachable endpoint during local runs.
+    request_timeout_seconds: 5.0
+    max_retries: 0
+
+  output:
+    sinks: [stdout]

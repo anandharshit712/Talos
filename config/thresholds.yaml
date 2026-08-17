@@ -1,0 +1,18 @@
+# Detector thresholds and windows (LLD 10), split out of default.yaml because this is the
+# most-tuned surface in the system. Detectors read these through ctx.settings.detection --
+# never as module-level literals.
+
+talos:
+  detection:
+    # Web auth brute force: many failures against one account or from one source IP.
+    brute_force: { window_seconds: 120, fail_threshold: 10 }
+
+    # Credential stuffing: few failures each, spread across many accounts (breadth, not depth).
+    credential_stuffing: { window_seconds: 300, distinct_accounts: 15, fails_per_account_max: 3 }
+
+    ssh_brute_force: { window_seconds: 120, fail_threshold: 8 }
+    rdp_brute_force: { window_seconds: 120, fail_threshold: 8 }
+
+    # IDOR: a baseline below min_baseline_observations is immature and yields a
+    # low-confidence verdict rather than a false positive.
+    idor: { min_baseline_observations: 50, sequential_run_len: 5 }
