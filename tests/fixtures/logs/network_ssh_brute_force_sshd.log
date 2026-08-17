@@ -1,0 +1,20 @@
+Aug 15 10:14:31 bastion-01 sshd[4101]: Server listening on 0.0.0.0 port 22.
+Aug 15 10:14:44 bastion-01 CRON[4110]: pam_unix(cron:session): session opened for user backup
+Aug 15 10:15:00 bastion-01 sshd[4242]: Failed password for root from 203.0.113.7 port 51234 ssh2
+Aug 15 10:15:05 bastion-01 sshd[4243]: Failed password for root from 203.0.113.7 port 51236 ssh2
+Aug 15 10:15:09 bastion-01 sshd[4244]: Failed password for root from 203.0.113.7 port 51238 ssh2
+Aug 15 10:15:13 bastion-01 sshd[4245]: Failed password for root from 203.0.113.7 port 51240 ssh2
+Aug 15 10:15:18 bastion-01 sshd[4246]: Failed password for root from 203.0.113.7 port 51242 ssh2
+Aug 15 10:15:22 bastion-01 sshd[4247]: Failed password for root from 203.0.113.7 port 51244 ssh2
+Aug 15 10:15:26 bastion-01 sshd[4248]: Received disconnect from 203.0.113.7 port 51244:11: Bye Bye
+Aug 15 10:15:27 bastion-01 sshd[4249]: Failed password for root from 203.0.113.7 port 51246 ssh2
+Aug 15 10:15:31 bastion-01 sshd[4250]: Failed password for root from 203.0.113.7 port 51248 ssh2
+Aug 15 10:15:35 bastion-01 sshd[4251]: Failed password for root from 203.0.113.7 port 51250 ssh2
+Aug 15 10:15:39 bastion-01 sshd[4252]: Failed password for root from 203.0.113.7 port 51252 ssh2
+Aug 15 10:15:44 bastion-01 sshd[4253]: Failed password for root from 203.0.113.7 port 51254 ssh2
+Aug 15 10:15:48 bastion-01 sshd[4254]: Failed password for root from 203.0.113.7 port 51256 ssh2
+Aug 15 10:15:52 bastion-01 sshd[4255]: Failed password for invalid user admin from 198.51.100.23 port 40122 ssh2
+Aug 15 10:15:57 bastion-01 sshd[4256]: Accepted password for root from 203.0.113.7 port 51260 ssh2
+Aug 15 10:16:03 bastion-01 sshd[4257]: pam_unix(sshd:session): session opened for user root by (uid=0)
+Aug 15 10:16:11 bastion-01 sshd[4260] Failed password for
+Aug 15 10:16:20 web-07 sshd[9001]: Accepted publickey for deploy from 192.0.2.40 port 33110 ssh2
