@@ -40,6 +40,7 @@ EXCLUDED_DIR_NAMES = frozenset(
         "node_modules",
         ".idea",
         ".vscode",
+        ".impeccable",
         "dist",
         "build",
         "htmlcov",
