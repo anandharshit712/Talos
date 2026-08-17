@@ -47,8 +47,9 @@ is never edited. See [LLD §13](docs/architecture/Talos_LLD.md) for the worked e
 ## Status
 
 **Pre-alpha, under active development.** Hackathon slice: Web + Network domains, 8 leaf
-detectors. See the [implementation plan](docs/planning/Talos_Implementation_Plan.md) for what
-exists and what is scheduled.
+detectors. The end-to-end pipeline runs today for SSH brute force; see the
+[build tracker](docs/planning/Talos_Build_Tracker.md) for exactly what is finished and the
+[implementation plan](docs/planning/Talos_Implementation_Plan.md) for what is scheduled.
 
 ## Quickstart
 
@@ -60,6 +61,24 @@ pre-commit install
 
 cp .env.example .env        # add your NIM API key, or leave it blank to run statistics-only
 ```
+
+Create the database, then scan a log:
+
+```bash
+python scripts/apply_migrations.py --db talos.db
+talos scan tests/fixtures/logs/network_ssh_brute_force_sshd.log --db talos.db --pretty
+```
+
+Reports go to stdout as JSON and to `out/reports/`; diagnostics and the run summary go to stderr,
+so `talos scan file.log | jq` works unfiltered. The fixture above produces two incidents — the
+brute-force burst crossing its threshold, then the escalation when a login finally succeeds:
+
+```
+brute_force on bastion-01 against root over 8 attempts  -- did not succeed (confidence 0.70)  [medium]
+brute_force on bastion-01 against root over 12 attempts -- succeeded      (confidence 0.90)  [high]
+```
+
+No model is contacted: `used_llm` is false on every verdict, by design.
 
 Verify the toolchain:
 

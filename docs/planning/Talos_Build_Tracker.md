@@ -22,7 +22,7 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 |---|---|---|---|---|---|
 | **P0** Foundation & gates | D1 | Aug 18 | **done** | yes | yes |
 | **P1** Contracts & core | D2 | Aug 19 | **done** | yes | yes |
-| **P2** Walking skeleton | D3–D4 | Aug 20–21 | not started | — | — |
+| **P2** Walking skeleton | D3–D4 | Aug 20–21 | **done** | yes | yes |
 | **P3** LLM layer | D5–D6 | Aug 22–23 | not started | — | — |
 | **P4** Web injection | D7–D9 | Aug 24–26 | not started | — | — |
 | **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | not started | — | — |
@@ -192,66 +192,93 @@ Enforced by the models, not by detector discipline:
 
 ---
 
-## P2 — Walking Skeleton · D3–D4 (Aug 20–21) — **de-risking milestone**
+## P2 — Walking Skeleton · D3–D4 (Aug 20–21) — **done** · de-risking milestone
 
 **Goal:** `talos scan tests/fixtures/logs/network_ssh_brute_force_sshd.log` prints a real
-`IncidentReport` JSON. No LLM anywhere.
+`IncidentReport` JSON. No LLM anywhere. **Reached 2026-08-18, ahead of the Aug 21 checkpoint.**
 
 ### P2.1 Ingestion
 
-- [ ] `ingestion/parser_contract.py` (~40) — `BaseParser` ABC, `parse_line` / `parse_stream`
-- [ ] `ingestion/parsers/network_log_parser.py` (~220) — sshd syslog → `NormalizedEvent`
-- [ ] Malformed lines skipped and counted, never fatal (LLD §11)
+- [x] `ingestion/parser_contract.py` (40) — `BaseParser`, `parse_line` / `parse_stream`, `parse_errors`
+- [x] `ingestion/parsers/network_log_parser.py` (133) — sshd syslog → `NormalizedEvent`
+- [x] Four auth line shapes: failed password, failed password for an invalid user, standalone
+      invalid user, accepted password (`password` and `publickey`)
+- [x] Malformed lines skipped and counted, never fatal
+- [x] Year-less syslog stamps reconstructed, stepped back a year when they would land in the future
 
 ### P2.2 Storage
 
-- [ ] `storage/event_window_store.py` (~180) — keyed TTL ring buffer, satisfies `EventWindow`
-- [ ] `storage/verdict_log_store.py` (~180) — SQLite audit trail, satisfies `VerdictRecorder`
-- [ ] Stores assume their schema exists and fail loudly if it does not (no DDL in `src/`)
+- [x] `storage/event_window_store.py` (91) — keyed TTL ring buffer, satisfies `EventWindow`
+- [x] Keys derived by the store and namespaced: `account:`, `ip:`, `host_account:`
+- [x] TTL measured in **event time** so replay behaves like a live stream
+- [x] Bounded per key, not globally (NFR-7)
+- [x] `storage/verdict_log_store.py` (85) — SQLite audit trail, satisfies `VerdictRecorder`
+- [x] A missing table raises `StorageError` naming the migration runner — no DDL in `src/`
 
 ### P2.3 Detection core and the first detector
 
-- [ ] `detection/rate/rate_engine.py` (~200) — `RateConfig`, `RateSignal`, the shared statistical core
-- [ ] `domains/network/brute_force/ssh_brute_force_detector.py` (~140)
-- [ ] `domains/network/brute_force/network_brute_force_sub_agent.py` (~60)
-- [ ] `domains/network/network_type_classifier.py` (~100) — static path only, LLM refine stubbed
-- [ ] `domains/network/network_domain_agent.py` (~90) — catches detector errors, degrades, never crashes
+- [x] `detection/rate/rate_engine.py` (105) — `RateConfig`, `RateSignal`, the shared statistical core
+- [x] `domains/network/brute_force/ssh_brute_force_detector.py` (128) — T1110, keyed `(host, account)`
+- [x] `domains/network/brute_force/network_brute_force_sub_agent.py` (46)
+- [x] `domains/network/network_type_classifier.py` (43) — static path only, LLM refine marked for P3
+- [x] `domains/network/network_domain_agent.py` (72)
+- [x] Detector failures contained twice: per detector in the sub-agent, per sub-agent in the agent
+- [x] Confidence curve externalised to `config/thresholds.yaml` → `detection.rate_confidence`
 
 ### P2.4 Orchestration and output
 
-- [ ] `orchestrator/agent_registry.py` (~60)
-- [ ] `orchestrator/event_orchestrator.py` (~140)
-- [ ] `orchestrator/verdict_aggregator.py` (~220) — dedupe, scope merge, severity, actions
-- [ ] `output/sinks/stdout_sink.py`, `output/sinks/json_file_sink.py` (~120 together)
-- [ ] `cli/main_cli.py` (~180) — `talos scan <file>`
+- [x] `orchestrator/agent_registry.py` (36)
+- [x] `orchestrator/event_orchestrator.py` (117) — window, route by domain, aggregate, persist
+- [x] `orchestrator/verdict_aggregator.py` (183) — dedupe, scope merge, severity, actions
+- [x] **Duplicate suppression** — an ongoing burst is one alert, re-reported only on escalation
+      (added after the first real run emitted 6 near-identical incidents for one burst)
+- [x] `output/sinks/stdout_sink.py` (30), `output/sinks/json_file_sink.py` (32)
+- [x] `cli/main_cli.py` (187) — `talos scan <file>` with `--db`, `--config-dir`, `--year`,
+      `--pretty`, `--log-level`
+- [x] `_aggregator` added to the standards §3.1 role vocabulary and to `check_naming.py`
+      (§2.1 already named the file — the omission was a defect in the table)
 
 ### P2.5 First SQL — the R4 exercise
 
-- [ ] `db/migrations/create_verdict_log_table_<stamp>.sql` (+ §4.4 header block)
-- [ ] `db/migrations/rollback/create_verdict_log_table_<stamp>.sql` (identical filename)
-- [ ] `scripts/apply_migrations.py` (~120) — timestamp-ordered runner, `schema_migrations` table
+- [x] `db/migrations/create_verdict_log_table_20260817_120000.sql` with the §4.4 header block
+- [x] `db/migrations/rollback/create_verdict_log_table_20260817_120000.sql` — identical filename
+- [x] `scripts/apply_migrations.py` (106) — timestamp-ordered, `schema_migrations` ledger,
+      `--list`, and a local-development `--rollback`
+- [x] `make migrate` target; `make run` depends on it
 
-### P2.6 Feature docs (R5) — created with the first code file of each
+### P2.6 Feature docs (R5)
 
-- [ ] `docs/features/network-log-ingestion/` — README (status), design, behaviour, testing, changelog
-- [ ] `docs/features/network-brute-force-detection/` — with `detection-logic.md`
-- [ ] `docs/features/incident-aggregation/` — with `behaviour.md`
+- [x] `docs/features/network-log-ingestion/` — README, design, behaviour, testing, changelog
+- [x] `docs/features/network-brute-force-detection/` — with `detection-logic.md` (signals,
+      thresholds, confidence maths, MITRE/OWASP, FP and FN modes)
+- [x] `docs/features/incident-aggregation/` — with `behaviour.md`
 
-### P2.7 Tests
+### P2.7 Tests — 71 added, 353 in the suite
 
-- [ ] Parser field mapping + malformed-line skip
-- [ ] `EventWindowStore` TTL eviction and keyed lookup
-- [ ] `RateEngine` edges: at threshold, one under, success-after-burst
-- [ ] Detector verdict shape; aggregator scope merge
-- [ ] `tests/e2e/test_ssh_brute_force_pipeline.py` against a labeled fixture
-- [ ] Fixture `tests/fixtures/logs/network_ssh_brute_force_sshd.log` + expected JSON
+- [x] Parser field mapping, four line shapes, skip counting, future-date rollback, impossible dates
+- [x] `EventWindowStore`: key derivation, namespacing, event-time window, TTL eviction, count bound
+- [x] `RateEngine` edges: at threshold, one under, spread beyond the window, success after the
+      burst, success before it, scope material, non-auth and unkeyable events
+- [x] Detector: verdict shape, evidence kinds, confidence growth/cap/success floor, config-driven
+      thresholds, RDP left alone, zero model prompts recorded
+- [x] Sub-agent and domain agent: dispatch, category identity, fail-open on both levels
+- [x] Aggregator: dedupe, scope union, corroboration, severity up/down, actions, summary
+- [x] Orchestrator: ordering, persistence, unregistered domain, suppression and its escalations
+- [x] Sinks: JSON Lines, one file per incident, unwritable destination raises
+- [x] Verdict log: round trip, newest-first, replace on re-append, missing schema names the fix
+- [x] CLI: incident on stdout, files written, skip count reported, exit 2 / exit 1 paths
+- [x] `tests/e2e/test_ssh_brute_force_pipeline.py` against the labelled fixture
+- [x] `tests/fixtures/logs/network_ssh_brute_force_sshd.log` + `tests/fixtures/expected/`
 
-### P2.8 Gate
+### P2.8 Gate — **passed 2026-08-18**
 
-- [ ] e2e test produces an `IncidentReport` with correct `scope.attempt_count`, `scope.succeeded`,
-      MITRE `T1110`, non-empty evidence — and `model.used_llm == false` throughout
-
----
+- [x] e2e produces an `IncidentReport` with `scope.attempt_count=12`, `scope.succeeded=true`,
+      MITRE `T1110`, non-empty evidence, and `model.used_llm == false` throughout
+- [x] Verified by hand, not only in tests: `talos scan` on the fixture reports 15 events,
+      5 skipped lines, 2 incidents — `medium` at the crossing, `high` on the success
+- [x] `run_all_checks.py --strict`, ruff, ruff-format, mypy strict, pytest — all green
+- [x] LLD §16.3 records the P2 deltas (event-time TTL, key derivation, double containment,
+      suppression, severity function, new config blocks)
 
 ## P3 — LLM Layer · D5–D6 (Aug 22–23)
 
@@ -476,7 +503,9 @@ for the deliberate-reuse claim.
 | `LICENSE` not chosen | P0 | P9 | every doc calls Talos open-source; `pyproject.toml` carries the TODO |
 | NIM model IDs are placeholders | P1 | P3 | verify at `build.nvidia.com` **before** writing client code |
 | Fixture corpus not started | P0 | P8 | plan §8 says collect during downtime, not at P8 |
-| `EventWindowStore` TTL/size knobs not in config yet | P1 | P2 | add to `thresholds.yaml` with the store |
+| ~~`EventWindowStore` TTL/size knobs not in config~~ | P1 | **done P2** | `talos.storage` in `default.yaml` |
+| Suppression state is per-process, capped at 2048 signatures | P2 | P7 | fine for a scan; a long-running service wants a TTL map (`ponytail:` comment in `event_orchestrator.py`) |
+| One incident per escalation, not per campaign | P2 | P8 | a burst that doubles re-reports; whether that is the right cadence is a calibration question |
 | Calibration curve values empty | P1 | P8 | shape fixed (`detector -> {parameter: float}`), values measured in P8 |
 
 ---
@@ -486,3 +515,4 @@ for the deliberate-reuse claim.
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-08-17 | Initial tracker: dashboard, per-phase/per-section checklists for P0–P9, cut order, open items. P0 and P1 recorded as done. |
+| 1.1 | 2026-08-18 | P2 recorded as done with per-section detail and measured gate results; open items updated (window config closed, two suppression items added). |

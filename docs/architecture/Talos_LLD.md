@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.2 (2026-08-17) — see §16
+**Revision:** 1.3 (2026-08-18) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
 **Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the hackathon slice (Web + Network). Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
@@ -716,6 +716,26 @@ learned, recorded here so the code and this document do not drift.
 | One technique may carry several ATT&CK ids | §2.2, §7.4 | §7.4 maps IDOR to both `T1083` and `T1530`. `knowledge/mitre_mapping.py` maps a technique to an ordered tuple: `Verdict.mitre` carries the primary, `IncidentReport.mitre_techniques` carries all. `credential_stuffing` likewise carries `T1110.004` then `T1110`. |
 | `talos.llm` config block; `output.report_dir` | §8.3, §10 | §8.3 specified timeout, retry, fallback penalty, and payload bounding as behaviour but gave them no configuration home, which would have forced module-level literals (standards 2.3). |
 | `calibration` shape fixed as `detector -> {parameter: float}` | §9, §10 | §9 left the curve representation open; a concrete shape is needed before P8 can write measured curves into config. |
+
+### 16.3 Revision 1.3 — the walking skeleton, P2 (2026-08-18)
+
+P2 built the thinnest complete path through every layer: parser → window → orchestrator → domain
+agent → classifier → sub-agent → detector → aggregator → sinks → CLI, with no LLM anywhere. What
+the implementation settled that this document left open:
+
+| Change | Where | Why |
+|---|---|---|
+| The event window derives its own keys | §12, §7.3 | The orchestrator adds an event before knowing which detector will want it, so the store indexes each event under account, source IP, and host+account, and a detector asks for the slice it reasons about. Keys are namespaced (`account:root`, `ip:…`, `host_account:host\|account`) so a username shaped like an address cannot collide with one. |
+| Window TTL is measured in **event time** | §12 | A wall-clock TTL evicts every event of a replayed log on arrival, so replay would detect nothing. The reference point is the newest event held for that key — replay and live tail then behave identically, which the P8 evaluation depends on. |
+| The window is bounded per key, not globally | §12 | One noisy source must not be able to evict every other key's history (NFR-7). `storage.event_window_max_events` is per key. |
+| `RateConfig.distributed` not implemented | §7.3 | Credential stuffing (P5) is the only consumer; the flag arrives with the detector that reads it rather than sitting unused. |
+| Detector failures are contained at **two** levels | §11 | §11 says the domain agent catches a raising detector. The sub-agent now catches per detector as well, so one broken detector does not take its siblings with it; the domain agent's guard remains for a sub-agent that breaks before reaching a detector. |
+| The aggregator emits `None` unless some verdict has `attack_detected` | §4.3, §11 | Inconclusive verdicts ride along inside a report another verdict created, but must not create one — otherwise "we looked and found nothing" becomes an incident. |
+| **Duplicate suppression in the orchestrator** | §4.2 (new) | A windowed detector re-fires on every event past its threshold, so a 40-attempt burst produced 32 identical incidents. The orchestrator reports an incident when its signature is first seen and again only on escalation — the attack succeeded, or its attempt count grew by `aggregation.escalation_attempt_factor`. Time-based cooldowns were rejected: they behave differently under replay. |
+| Severity: category floor, ±1 step | §4.3 | §4.3 called for "a function of max confidence, succeeded, and category weight" without fixing one. Implemented as a per-category floor, one step up on success, one step down below 0.5 confidence. |
+| Aggregate confidence = max + boost per extra detector | §4.3 | Averaging punishes corroboration, which is the opposite of what independent agreement means. |
+| New config blocks: `detection.rate_confidence`, `aggregation`, `storage` | §10 | The confidence curve, corroboration boost, suppression policy, and window bounds are all tunables; none may sit in code (standards §2.3). |
+| `scripts/apply_migrations.py` owns the `schema_migrations` ledger | §5 (plan) | Stores never issue DDL; a missing table raises `StorageError` naming the runner. The ledger table is the one `CREATE` outside `db/`, and it exists to record what ran from `db/`. |
 
 ---
 *End of LLD.*
