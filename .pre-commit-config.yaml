@@ -1,0 +1,32 @@
+# Fast gates on every commit. The R3.5 test-mirror check is deliberately absent here and runs
+# only in the phase gate (`run_all_checks.py --strict`, CI): blocking a local commit because a
+# module's test lands in the next commit would make the gate something to work around.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: talos-rule-checks
+        name: Talos rule checks (R1-R6)
+        entry: python tools/checks/run_all_checks.py
+        language: system
+        pass_filenames: false
+        always_run: true
