@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.3 (2026-08-18) — see §16
+**Revision:** 1.4 (2026-08-18) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
 **Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the hackathon slice (Web + Network). Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
@@ -76,7 +76,7 @@ src/talos/
 │   └── baseline/
 │       └── access_baseline.py         # AccessBaseline model + per-account update logic
 ├── llm/
-│   ├── model_client.py                # ModelClient ABC + NimClient / VllmClient / OllamaClient
+│   ├── model_client.py                # ModelClient ABC + OpenAiCompatibleClient (NIM/Groq/Mistral)
 │   ├── model_router.py                # agent -> model resolution + fallback
 │   └── prompts/                       # versioned prompt templates (R3.7)
 │       ├── web_type_classifier_route_v1.md
@@ -510,31 +510,75 @@ class ModelClient(ABC):
     async def complete(self, *, model: str, prompt: str, schema: dict,
                        max_tokens: int, timeout_s: float) -> dict: ...
 ```
-Concrete impls: `NimClient` (NVIDIA NIM REST), `VllmClient`, `OllamaClient`. Selected by config; the rest of the system is impl-agnostic.
+**One concrete implementation: `OpenAiCompatibleClient`.** NVIDIA NIM, Groq, and Mistral all speak
+the OpenAI chat-completions dialect, so a provider is a base URL plus the name of the environment
+variable holding its key — a config entry, not a module. `VllmClient` and `OllamaClient` are
+dropped: the slice is hosted-only, and neither had a second consumer (rev 1.4, §16.4).
+
+Providers are declared in `config/model_routing.yaml`:
+
+```yaml
+providers:
+  nim:     { base_url: "https://integrate.api.nvidia.com/v1", api_key_env: "TALOS_NIM_API_KEY" }
+  groq:    { base_url: "https://api.groq.com/openai/v1",      api_key_env: "TALOS_GROQ_API_KEY" }
+  mistral: { base_url: "https://api.mistral.ai/v1",           api_key_env: "TALOS_MISTRAL_API_KEY" }
+```
+
+A key never appears in configuration — only the name of the variable that holds it.
 
 ### 8.2 Routing — `llm/model_router.py`, config in `config/model_routing.yaml`
-```yaml
-# per-agent model routing (config-driven, HLD §8)
-routing:
-  web_type_classifier:      { model: "meta/llama-3.1-8b-instruct", tier: small }
-  network_type_classifier:  { model: "meta/llama-3.1-8b-instruct", tier: small }
-  sql_injection_detector:   { model: "meta/codellama-13b-instruct", tier: code, fallback: "meta/llama-3.1-8b-instruct" }
-  xss_detector:             { model: "meta/llama-3.1-8b-instruct", tier: code }
-  brute_force_detector:     { model: "meta/llama-3.2-3b-instruct", tier: nano }
-  credential_stuffing_detector: { model: "meta/llama-3.2-3b-instruct", tier: nano }
-  ssh_brute_force_detector: { model: "meta/llama-3.2-3b-instruct", tier: nano }
-  rdp_brute_force_detector: { model: "meta/llama-3.2-3b-instruct", tier: nano }
-  access_baseliner:         { model: "mistralai/mixtral-8x7b-instruct", tier: long_context }
-  deviation_scorer:         { model: "meta/llama-3.1-70b-instruct", tier: heavy, fallback: "meta/llama-3.1-8b-instruct" }
-```
-Routing keys are exactly the `detector_name` / classifier module names above, so a key can never drift from the component it routes.
 
-> Model IDs are placeholders — verify current availability/free-tier at `build.nvidia.com` before locking in (this is not a live catalog lookup).
+Each key is exactly a `detector_name` or classifier module stem, so a route can never drift from
+the component it routes. Each entry names a tier, a provider, a model, and the provider+model to
+fall back to.
+
+```yaml
+routing:
+  network_type_classifier:      { tier: nano,  provider: nim, model: "meta/llama-3.1-8b-instruct",
+                                  fallback: { provider: groq, model: "openai/gpt-oss-20b" } }
+  ssh_brute_force_detector:     { tier: nano,  provider: nim, model: "meta/llama-3.1-8b-instruct", ... }
+  rdp_brute_force_detector:     { tier: nano,  provider: nim, model: "meta/llama-3.1-8b-instruct", ... }
+  brute_force_detector:         { tier: nano,  provider: nim, model: "meta/llama-3.1-8b-instruct", ... }
+  credential_stuffing_detector: { tier: nano,  provider: nim, model: "meta/llama-3.1-8b-instruct", ... }
+  web_type_classifier:          { tier: small, provider: nim, model: "nvidia/nemotron-3-nano-30b-a3b",
+                                  fallback: { provider: groq, model: "openai/gpt-oss-20b" } }
+  sql_injection_detector:       { tier: code,  provider: mistral, model: "codestral-2508",
+                                  fallback: { provider: groq, model: "openai/gpt-oss-120b" } }
+  xss_detector:                 { tier: code,  provider: mistral, model: "codestral-2508", ... }
+  access_baseliner:             { tier: long_context, provider: nim,
+                                  model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+                                  fallback: { provider: mistral, model: "mistral-large-2512" } }
+  deviation_scorer:             { tier: heavy, provider: nim, model: "nvidia/nemotron-3-super-120b-a12b",
+                                  fallback: { provider: mistral, model: "mistral-large-2512" } }
+  payload_guard:                { tier: guard, provider: groq,
+                                  model: "meta-llama/llama-prompt-guard-2-86m",
+                                  fallback: { provider: nim,
+                                              model: "nvidia/llama-3.1-nemotron-safety-guard-8b-v3" } }
+```
+
+`config/model_routing.yaml` is authoritative; the block above is illustrative and elides repeated
+fallbacks. **Every model here was probed with a live completion on 2026-08-18** — see
+`../research/Talos_Model_Selection_Research.md` §6 for latencies, the four candidates that failed,
+and why the code tier is the one tier NVIDIA is not in the path for.
+
+**Five tiers, not ten bespoke choices** (`nano`, `small`, `code`, `long_context`, `heavy`, plus
+`guard`): a tier states the job, so re-verification each phase is five checks rather than ten.
+
+**Re-verify before every phase gate** with `python scripts/check_model_availability.py`. It reads
+this table rather than carrying its own copy, and exits non-zero on the first model that does not
+answer. A published catalogue entry is not an entitlement — NVIDIA lists 106 models on
+`/v1/models` and serves a given account far fewer.
 
 ### 8.3 Resilience
+- **No key, no problem:** an unconfigured or unreachable provider returns `None` from the router,
+  and the caller uses its templated path with `used_llm=False`. This is a supported mode.
 - **Timeout + retry:** one retry on timeout/5xx with jittered backoff.
 - **Fallback:** on persistent failure, route to the configured smaller `fallback` model and set `confidence *= penalty` (default 0.85), noting it in `ModelInfo.route_reason`.
-- **Prompt hardening:** attacker-controlled telemetry is embedded as clearly delimited *data*, never as instructions; payloads are length-bounded before prompting (prompt-injection mitigation, HLD §11/§13).
+- **Prompt hardening:** attacker-controlled telemetry is embedded as clearly delimited *data*, never as instructions; payloads are length-bounded before prompting (prompt-injection mitigation, HLD §11/§13). A dedicated `payload_guard` route screens payloads ahead of the judge models.
+- **Reply extraction:** several models return `message.content = null` and put their answer in
+  `message.reasoning_content` (observed on `openai/gpt-oss-*` and `nvidia/nvidia-nemotron-nano-9b-v2`).
+  The client reads `content`, falls back to `reasoning_content`, and treats an empty result as a
+  parse failure rather than as an empty verdict.
 
 ---
 
@@ -736,6 +780,27 @@ the implementation settled that this document left open:
 | Aggregate confidence = max + boost per extra detector | §4.3 | Averaging punishes corroboration, which is the opposite of what independent agreement means. |
 | New config blocks: `detection.rate_confidence`, `aggregation`, `storage` | §10 | The confidence curve, corroboration boost, suppression policy, and window bounds are all tunables; none may sit in code (standards §2.3). |
 | `scripts/apply_migrations.py` owns the `schema_migrations` ledger | §5 (plan) | Stores never issue DDL; a missing table raises `StorageError` naming the runner. The ledger table is the one `CREATE` outside `db/`, and it exists to record what ran from `db/`. |
+
+### 16.4 Revision 1.4 — model selection verified against live providers (2026-08-18)
+
+P3's "verify before coding" step probed every routed model with a real completion instead of
+trusting a catalogue. Four of the placeholder picks failed, and the failures changed the design.
+Full evidence in `../research/Talos_Model_Selection_Research.md`.
+
+| Change | Where | Why |
+|---|---|---|
+| Routing entries gain `provider` and a structured `fallback: {provider, model}` | §8.2 | A fallback on the same provider does not survive that provider being down or rate-limited. Fallbacks now cross providers. |
+| Providers declared in config, keys by env-var name | §8.1, §10 | `providers: {nim, groq, mistral}` with `base_url` + `api_key_env`. A key never enters the YAML tree. |
+| `NimClient` / `VllmClient` / `OllamaClient` → one `OpenAiCompatibleClient` | §8.1 | All three providers speak the OpenAI dialect, and the slice is hosted-only, so the local clients had no consumer. Adding a provider is a config entry. |
+| The code tier is served by Mistral, not NVIDIA | §8.2 | NVIDIA serves this account **no code specialist at all** — codestral, codellama, codegemma, deepseek-coder, granite-code and starcoder all return `404 Not found for account`. `codestral-2508` on Mistral is primary; Groq's 120B generalist backs it. |
+| Nano tier is `meta/llama-3.1-8b-instruct` | §8.2 | The `llama-3.2-3b-instruct` placeholder times out at 120s on this account, three attempts. |
+| `mistralai/mixtral-8x7b-instruct` → `nvidia/nemotron-3.5-lightning-30b-a3b` | §8.2 | The placeholder does not exist. The replacement is a 1M-context MoE, probed at 5.0s. |
+| New `payload_guard` route | §8.3 | A dedicated injection classifier in front of the judge models: Groq's `llama-prompt-guard-2-86m` (594ms, 14.4K requests/day), falling back to NVIDIA's `nemotron-safety-guard-8b-v3`. |
+| Reply extraction reads `reasoning_content` | §8.3 | Several models return `content: null` and put the answer in `reasoning_content`. A naive read gets `None` from a model that worked. |
+| Router returns `None` when no model is reachable | §8.3 | Makes "no key configured" an ordinary path rather than an error one, which is what keeps `used_llm=false` a supported mode. |
+| Five tiers named in config (`nano`, `small`, `code`, `long_context`, `heavy`, `guard`) | §8.2 | Re-verification each phase is five checks, not ten. |
+| **`DetectionContext.model_client` is the router, not a raw client** | §3, §8.1 | P1 froze `ModelCaller.complete(model=..., ...)`, which would have forced every detector to resolve its own model, retries, fallback, and penalty. It is now `complete_for(component, prompt=..., schema=...) -> ModelOutcome \| None`: a detector names itself and gets an answer. A frozen-contract change, made deliberately and recorded here. |
+| Identifiers are sealed, not quoted as facts | §8.3 | The injection suite caught it: account and host names come from the log, so an attacker picks them, and they were being rendered into the prompt's *trusted* section. Accounts, hosts, sources, and raw lines are now sealed together. |
 
 ---
 *End of LLD.*

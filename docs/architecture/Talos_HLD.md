@@ -250,11 +250,20 @@ Per-sub-agent model specialization is **architecturally preferred**, not just po
 | Task profile | Agents | Model tier | Role of the LLM |
 |---|---|---|---|
 | High-frequency classification | Type Classifiers | small/fast (4–8B) | pick category on every event |
-| Pattern/signature (code-aware) | SQLi, XSS | code-aware (8–15B) on a regex/static pre-filter | **edge-case judgment**, not first-line detection |
+| Pattern/signature (code-aware) | SQLi, XSS | code-aware (Codestral 22B) on a regex/static pre-filter | **edge-case judgment**, not first-line detection |
 | Statistical → narrative | Auth Failure, Network Brute Force | smallest (3–4B) | turn a statistical verdict into readable scope; **detection is a threshold, not the LLM** |
-| Contextual/behavioral | IDOR Deviation Scorer | large (70B+) | weigh a full access history; fewer calls per event |
+| Contextual/behavioral | IDOR Deviation Scorer | large MoE (120B, ~12B active) | weigh a full access history; fewer calls per event |
+| Adversarial input screening | payload guard | tiny classifier (86M) | flag prompt injection in log content before a judge model reads it |
 
-**Deployment:** hackathon → NVIDIA NIM free hosted API; long-term → self-host the same open-weight models via vLLM/Ollama. Model choices are indirected behind a `ModelClient` so a swap is a config change (LLD).
+**Deployment:** hackathon → hosted free tiers, primarily NVIDIA NIM, with Groq and Mistral as
+cross-provider fallbacks; long-term → self-host the same open-weight models. All three providers
+speak the OpenAI dialect, so a provider is a base URL plus a key-variable name in config, and a
+swap needs no code (LLD §8.1).
+
+**Verified, not assumed.** Every routed model is probed with a live completion before a phase gate
+(`scripts/check_model_availability.py`). That check already changed the design once: NVIDIA serves
+this account no code-specialist model, so the code tier is led by Mistral's Codestral — see
+`../research/Talos_Model_Selection_Research.md`.
 
 ---
 
