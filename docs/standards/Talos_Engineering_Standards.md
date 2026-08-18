@@ -195,6 +195,7 @@ Talos/
 │       │   ├── rate/
 │       │   │   └── rate_engine.py
 │       │   ├── patterns/
+│       │   │   ├── pattern_engine.py   shared extraction, matching, signal grades
 │       │   │   ├── sql_injection_pattern_rules.py
 │       │   │   └── xss_pattern_rules.py
 │       │   └── baseline/
