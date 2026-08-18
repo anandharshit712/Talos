@@ -121,7 +121,9 @@ Talos/
 ├── db/
 │   ├── schema/                       current-state schema snapshots
 │   ├── migrations/                   forward migrations (see R4)
-│   │   └── rollback/                 matching down-migrations
+│   │   ├── rollback/                 matching down-migrations
+│   │   └── postgres/                 PostgreSQL baseline set, from P6 (HLD 7.1)
+│   │       └── rollback/             matching down-migrations for that set
 │   ├── seeds/                        seed data scripts
 │   └── queries/                      reusable / ad-hoc analysis queries
 │
@@ -444,7 +446,14 @@ db/migrations/add_baseline_confidence_column_20260819_093015.sql
 db/migrations/index_verdict_log_by_source_ip_20260820_154500.sql
 ```
 
-**Rollbacks** live in `db/migrations/rollback/` under the **identical filename** as the forward
+**Engine subdirectories.** A DDL dialect is not portable, so a second engine gets its own
+baseline set under `db/migrations/<engine>/`, with its own `rollback/` beside it. The existing
+files stay where they are and are never edited (R4.4 rule 1) — they remain the applied history of
+any database built from them. `db/migrations/*.sql` is the SQLite set; `db/migrations/postgres/`
+arrives in P6. Every rule below applies per set, and `check_naming` enforces the pairing and
+header rules inside each one.
+
+**Rollbacks** live beside their set in `rollback/` under the **identical filename** as the forward
 migration. This keeps the date-time last (R4) while making the pair unmistakable.
 
 ```
@@ -725,6 +734,7 @@ CONFIG         thresholds and prompts live outside code — config/ and llm/prom
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-08-17 | Initial standards: R1 root cleanliness, R2 component taxonomy, R3 naming, R4 SQL/migration date-time stamps, R5 per-feature docs, R6 1,000/1,500 LOC limits, enforcement, LLD deltas |
+| 1.4 | 2026-08-18 | §2.1 documents `db/migrations/<engine>/` and §4.3 states the per-set rules, ahead of the P6 PostgreSQL baseline set. `check_naming` now enforces pairing and headers inside every set rather than only the top level. |
 | 1.3 | 2026-08-18 | §1.1 now records that a local `.env` is tolerated at the root: git-ignored, never committed, and created by the documented setup steps. |
 | 1.2 | 2026-08-17 | Added `_aggregator` to the §3.1 role vocabulary. §2.1 already named `verdict_aggregator.py`, so the omission was a defect in the table, not in the file. |
 | 1.1 | 2026-08-17 | Corrected the §6.2 line-count command (`Measure-Object -Line` undercounts by skipping blank lines — replaced with `@(Get-Content).Count`). Added `docs/planning/` to §2.1. Added the §3.4 ABC exception for `_contract` modules. Renamed `sqli_*` → `sql_injection_*` and `idor/` → `broken_access_control/` throughout, matching LLD rev 1.1 §16.1. Marked §8 applied. |

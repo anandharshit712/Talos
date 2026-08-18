@@ -31,7 +31,15 @@ from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
-from violation_types import Violation, build_parser, find_repo_root, iter_files, rel, report
+from violation_types import (
+    Violation,
+    build_parser,
+    find_repo_root,
+    is_excluded_dir,
+    iter_files,
+    rel,
+    report,
+)
 
 # ---------------------------------------------------------------------------
 # R3 vocabularies
@@ -390,42 +398,61 @@ def check_sql_names(root: Path) -> list[Violation]:
     return violations
 
 
-def check_migration_pairs(root: Path) -> list[Violation]:
-    """R4.3: every forward migration has a same-named rollback, and vice versa."""
+def migration_sets(root: Path) -> list[Path]:
+    """Every directory holding a migration set: the top level, plus one per engine.
+
+    A DDL dialect is not portable, so a second engine gets its own baseline set under
+    ``db/migrations/<engine>/`` (standards 4.3). Discovering sets rather than naming them means
+    the P6 PostgreSQL set is checked the day it appears, instead of shipping unverified because
+    the checker only ever looked at the top level.
+    """
     migrations_dir = root / "db" / "migrations"
-    rollback_dir = migrations_dir / "rollback"
     if not migrations_dir.is_dir():
         return []
-    forward = {p.name for p in migrations_dir.glob("*.sql")}
-    rollback = {p.name for p in rollback_dir.glob("*.sql")} if rollback_dir.is_dir() else set()
+    sets = [migrations_dir]
+    sets.extend(
+        directory
+        for directory in sorted(migrations_dir.iterdir())
+        if directory.is_dir()
+        and directory.name != "rollback"
+        and not is_excluded_dir(directory.name)
+    )
+    return sets
+
+
+def check_migration_pairs(root: Path) -> list[Violation]:
+    """R4.3: every forward migration has a same-named rollback, and vice versa, in every set."""
     violations: list[Violation] = []
-    for name in sorted(forward - rollback):
-        violations.append(
-            Violation(
-                "R4.3",
-                f"db/migrations/{name}",
-                "no rollback at db/migrations/rollback/ under the identical filename; an "
-                "irreversible migration still needs the file, containing only the reason why",
+    for migrations_dir in migration_sets(root):
+        rollback_dir = migrations_dir / "rollback"
+        forward = {p.name for p in migrations_dir.glob("*.sql")}
+        rollback = {p.name for p in rollback_dir.glob("*.sql")} if rollback_dir.is_dir() else set()
+        here = rel(migrations_dir, root)
+        for name in sorted(forward - rollback):
+            violations.append(
+                Violation(
+                    "R4.3",
+                    f"{here}/{name}",
+                    f"no rollback at {here}/rollback/ under the identical filename; an "
+                    "irreversible migration still needs the file, containing only the reason why",
+                )
             )
-        )
-    for name in sorted(rollback - forward):
-        violations.append(
-            Violation(
-                "R4.3",
-                f"db/migrations/rollback/{name}",
-                "rollback has no forward migration of the same name",
+        for name in sorted(rollback - forward):
+            violations.append(
+                Violation(
+                    "R4.3",
+                    f"{here}/rollback/{name}",
+                    "rollback has no forward migration of the same name",
+                )
             )
-        )
     return violations
 
 
 def check_migration_headers(root: Path) -> list[Violation]:
-    """R4.4 rule 4: every migration carries the required header comment block."""
-    migrations_dir = root / "db" / "migrations"
-    if not migrations_dir.is_dir():
-        return []
+    """R4.4 rule 4: every migration carries the required header comment block, in every set."""
     violations: list[Violation] = []
-    for path in sorted(migrations_dir.glob("*.sql")):
+    paths = [path for directory in migration_sets(root) for path in sorted(directory.glob("*.sql"))]
+    for path in paths:
         head = path.read_text(encoding="utf-8", errors="replace")[:2000]
         missing = [key for key in MIGRATION_HEADER_KEYS if key not in head]
         if missing:
