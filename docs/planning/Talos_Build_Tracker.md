@@ -459,6 +459,9 @@ store moves and the other is written against PostgreSQL from the start; at P7 it
 stores plus a live API.
 
 - [ ] PostgreSQL installed and running as a **native service** (no container — see plan scope note)
+- [ ] **Stop and ask the owner before creating the database.** A dedicated role is created for
+      Talos rather than reusing a superuser; the owner supplies the role and database name. The
+      DSN lives in `.env` (git-ignored) and config references it by variable name only
 - [ ] `db/migrations/postgres/` created; the SQLite set left unedited and forward-only (R4)
 - [ ] `db/migrations/postgres/create_verdict_log_table_<stamp>.sql` + rollback — `timestamptz`
       for `created_at`, `jsonb` + GIN for `report_json`
