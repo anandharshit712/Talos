@@ -9,8 +9,9 @@ The YAML files are merged key by key, so an overlay states only what it changes.
 is rooted at a single ``talos:`` key, which this loader strips -- a stray top-level key in a
 config file is then a loud error instead of a silently ignored setting.
 
-Secrets never come from YAML. ``TALOS_NIM_API_KEY`` and friends are environment-only, which is
-why the environment sits at the top of the precedence list rather than the bottom.
+Secrets never come from YAML and never become settings fields. ``config/model_routing.yaml``
+names the environment variable holding each provider key (``api_key_env``); the router reads it
+at build time. Nothing in this module can hold a credential, so nothing can log or serialise one.
 
 Detectors read tunables from ``ctx.settings``; nothing in ``src/`` carries a threshold as a
 module-level literal (standards 2.3).
@@ -25,7 +26,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -300,9 +301,8 @@ class TalosSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        # TALOS_MODEL_BACKEND is the documented env var (.env.example); pydantic's default
-        # 'model_' protected namespace would rename the field to avoid a clash that does not
-        # exist here.
+        # Config blocks are named model_routing / ModelRoute; pydantic's default 'model_'
+        # protected namespace warns on field names it has no reason to reserve here.
         protected_namespaces=(),
     )
 
@@ -319,13 +319,12 @@ class TalosSettings(BaseSettings):
     calibration: dict[str, dict[str, float]] = Field(default_factory=dict)
     """Per-detector calibration curve parameters, measured in P8 (LLD 9)."""
 
-    # --- environment-only: endpoints, secrets, paths ---------------------------------------
+    # --- environment-only: paths and runtime knobs -----------------------------------------
+    #
+    # No provider fields live here. A provider is a base_url plus the *name* of the variable
+    # holding its key, declared under talos.providers and read by the router (LLD 8.1). Keeping
+    # a second copy of that here is how the two drift apart.
 
-    model_backend: Literal["nim", "vllm", "ollama"] = "nim"
-    nim_api_key: SecretStr | None = None
-    nim_base_url: str = "https://integrate.api.nvidia.com/v1"
-    vllm_base_url: str = "http://localhost:8000/v1"
-    ollama_base_url: str = "http://localhost:11434"
     db_path: Path = Path("talos.db")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 

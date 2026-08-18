@@ -85,12 +85,17 @@ def test_environment_beats_the_overlay(tmp_path: Path, monkeypatch: pytest.Monke
     assert settings.detection.ssh_brute_force.window_seconds == 120
 
 
-def test_secrets_are_environment_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_settings_cannot_hold_a_credential(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No key is a settings field, so nothing here can log or serialise one.
+
+    Provider keys are read by the router from the variable each provider names in
+    ``api_key_env``. A settings field holding the key would be a second copy that drifts.
+    """
     monkeypatch.setenv("TALOS_NIM_API_KEY", "nvapi-secret")
     settings = TalosSettings.load(config_dir=_config_dir(tmp_path))
-    assert settings.nim_api_key is not None
-    assert settings.nim_api_key.get_secret_value() == "nvapi-secret"
     assert "nvapi-secret" not in repr(settings)
+    assert "nvapi-secret" not in settings.model_dump_json()
+    assert not [name for name in type(settings).model_fields if "key" in name]
 
 
 @pytest.mark.parametrize(
