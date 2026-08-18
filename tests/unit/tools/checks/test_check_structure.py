@@ -26,6 +26,19 @@ class TestRootAllowlist:
         assert rules(violations) == {"R1"}
         assert "src/talos/" in violations[0].message
 
+    def test_local_env_file_is_tolerated(
+        self, write_file: Callable[..., Path], fake_repo: Path
+    ) -> None:
+        """The setup steps create .env and git blocks committing it, so the gate must pass."""
+        write_file(fake_repo / ".env", "TALOS_NIM_API_KEY=redacted\n")
+        assert run(fake_repo) == []
+
+    def test_other_secret_files_at_root_still_fail(
+        self, write_file: Callable[..., Path], fake_repo: Path
+    ) -> None:
+        write_file(fake_repo / "credentials.json", "{}")
+        assert rules(run(fake_repo)) == {"R1"}
+
     def test_loose_utils_file_at_root_fails(
         self, write_file: Callable[..., Path], fake_repo: Path
     ) -> None:

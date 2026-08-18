@@ -48,8 +48,12 @@ def test_repository_config_loads(tmp_path: Path) -> None:
     assert settings.detection.credential_stuffing.distinct_accounts == 15
     assert settings.classifier.min_confidence_floor == 0.35
     assert settings.llm.fallback_confidence_penalty == 0.85
-    assert settings.routing["sql_injection_detector"].tier == "code"
-    assert settings.routing["sql_injection_detector"].fallback == "meta/llama-3.1-8b-instruct"
+    route = settings.routing["sql_injection_detector"]
+    assert route.tier == "code"
+    assert route.provider in settings.providers
+    assert route.fallback is not None
+    assert route.fallback.provider in settings.providers
+    assert settings.provider_for("nim").api_key_env == "TALOS_NIM_API_KEY"
 
 
 def test_defaults_stand_when_no_config_exists(tmp_path: Path) -> None:
@@ -122,3 +126,26 @@ def test_config_path_environment_variable_selects_the_overlay(
 def test_route_for_unrouted_component_is_none(tmp_path: Path) -> None:
     settings = TalosSettings.load(config_dir=_config_dir(tmp_path))
     assert settings.route_for("ssrf_detector") is None
+
+
+def test_every_route_names_a_configured_provider() -> None:
+    """A routing entry pointing at an undeclared provider is a startup failure, not a 404."""
+    settings = TalosSettings.load(config_dir=default_config_dir(), overlay=Path("absent.yaml"))
+    for name, route in settings.routing.items():
+        assert route.provider in settings.providers, name
+        if route.fallback is not None:
+            assert route.fallback.provider in settings.providers, name
+
+
+def test_unknown_provider_fails_loudly(tmp_path: Path) -> None:
+    settings = TalosSettings.load(config_dir=_config_dir(tmp_path))
+    with pytest.raises(ConfigError, match=r"has no entry under talos\.providers"):
+        settings.provider_for("carrier-pigeon")
+
+
+def test_provider_profiles_carry_no_secrets() -> None:
+    """Config names the environment variable; the key itself never enters the YAML tree."""
+    settings = TalosSettings.load(config_dir=default_config_dir(), overlay=Path("absent.yaml"))
+    for profile in settings.providers.values():
+        assert profile.api_key_env.startswith("TALOS_")
+        assert profile.base_url.startswith("https://")

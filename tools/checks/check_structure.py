@@ -62,6 +62,11 @@ ROOT_DIR_ALLOWLIST = frozenset(
     }
 )
 
+#: Created by the documented setup steps and blocked from commits by .gitignore. Failing a
+#: developer's local gate on a file the README tells them to create makes the gate the thing to
+#: work around; git is what enforces "never committed", and it already does.
+ROOT_LOCAL_ONLY_FILES = frozenset({".env"})
+
 #: Names explicitly forbidden at the root even though their extension looks harmless.
 FORBIDDEN_ROOT_STEMS = frozenset(
     {"main", "app", "run", "server", "test", "setup", "orchestrator", "utils", "manage"}
@@ -130,7 +135,7 @@ def check_root(root: Path) -> list[Violation]:
                 )
             )
             continue
-        if entry.name in ROOT_FILE_ALLOWLIST:
+        if entry.name in ROOT_FILE_ALLOWLIST or entry.name in ROOT_LOCAL_ONLY_FILES:
             continue
         detail = "not in the standards 1.1 root allowlist"
         if entry.suffix == ".py":

@@ -1,31 +1,100 @@
-# Per-agent model routing (LLD 8.2, HLD 8).
+# Per-agent model routing (LLD 8.2, HLD 8) and the providers that serve it.
 #
-# Every key is exactly a detector_name or a classifier module stem, so a routing entry can
+# Every routing key is exactly a detector_name or a classifier module stem, so an entry can
 # never drift from the component it routes.
 #
-# Model IDs are placeholders pending a build.nvidia.com availability check (LLD 8.2, plan P3).
-# Nothing here is load-bearing for detection: every detector produces a verdict with
+# Every model below was probed with a live completion on 2026-08-18 and answered. NVIDIA
+# serves only part of its published catalogue to any given account: codestral, codellama,
+# codegemma, deepseek-coder, granite-code and starcoder all return 404 for ours, and
+# llama-3.2-3b / llama-3.3-70b time out. That is why the code tier leads with Mistral. See
+# docs/research/Talos_Model_Selection_Research.md for how each was chosen. Re-verify with
+# `python scripts/check_model_availability.py` before any phase gate: a free-tier model can be
+# withdrawn at short notice.
+#
+# Nothing here is load-bearing for detection. Every detector produces a verdict with
 # used_llm=false when no model is reachable.
 
 talos:
+  providers:
+    # All three speak the OpenAI chat-completions dialect, so one client serves them all.
+    nim:
+      base_url: "https://integrate.api.nvidia.com/v1"
+      api_key_env: "TALOS_NIM_API_KEY"
+    groq:
+      base_url: "https://api.groq.com/openai/v1"
+      api_key_env: "TALOS_GROQ_API_KEY"
+    mistral:
+      base_url: "https://api.mistral.ai/v1"
+      api_key_env: "TALOS_MISTRAL_API_KEY"
+
   routing:
-    web_type_classifier:
-      { model: "meta/llama-3.1-8b-instruct", tier: small }
+    # --- nano: render a computed signal into a sentence, no judgement required --------------
     network_type_classifier:
-      { model: "meta/llama-3.1-8b-instruct", tier: small }
-    sql_injection_detector:
-      { model: "meta/codellama-13b-instruct", tier: code, fallback: "meta/llama-3.1-8b-instruct" }
-    xss_detector:
-      { model: "meta/llama-3.1-8b-instruct", tier: code }
-    brute_force_detector:
-      { model: "meta/llama-3.2-3b-instruct", tier: nano }
-    credential_stuffing_detector:
-      { model: "meta/llama-3.2-3b-instruct", tier: nano }
+      tier: nano
+      provider: nim
+      model: "meta/llama-3.1-8b-instruct"
+      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
     ssh_brute_force_detector:
-      { model: "meta/llama-3.2-3b-instruct", tier: nano }
+      tier: nano
+      provider: nim
+      model: "meta/llama-3.1-8b-instruct"
+      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
     rdp_brute_force_detector:
-      { model: "meta/llama-3.2-3b-instruct", tier: nano }
+      tier: nano
+      provider: nim
+      model: "meta/llama-3.1-8b-instruct"
+      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+    brute_force_detector:
+      tier: nano
+      provider: nim
+      model: "meta/llama-3.1-8b-instruct"
+      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+    credential_stuffing_detector:
+      tier: nano
+      provider: nim
+      model: "meta/llama-3.1-8b-instruct"
+      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+
+    # --- small: the highest-volume LLM call, so MoE with ~3B active params ------------------
+    web_type_classifier:
+      tier: small
+      provider: nim
+      model: "nvidia/nemotron-3-nano-30b-a3b"
+      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+
+    # --- code: adversarial, code-shaped payloads. Mistral leads because NVIDIA serves no
+    #     code specialist to this account; Groq's 120B generalist backs it up.
+    sql_injection_detector:
+      tier: code
+      provider: mistral
+      model: "codestral-2508"
+      fallback: { provider: groq, model: "openai/gpt-oss-120b" }
+    xss_detector:
+      tier: code
+      provider: mistral
+      model: "codestral-2508"
+      fallback: { provider: groq, model: "openai/gpt-oss-120b" }
+
+    # --- long_context: 1M primary. The fallback is 128K, so a fallback on a very long
+    #     access history truncates -- acceptable, and noted in the feature docs.
     access_baseliner:
-      { model: "mistralai/mixtral-8x7b-instruct", tier: long_context }
+      tier: long_context
+      provider: nim
+      model: "nvidia/nemotron-3.5-lightning-30b-a3b"
+      fallback: { provider: mistral, model: "mistral-large-2512" }
+
+    # --- heavy: the hardest judgement in the system, and the rarest call --------------------
     deviation_scorer:
-      { model: "meta/llama-3.1-70b-instruct", tier: heavy, fallback: "meta/llama-3.1-8b-instruct" }
+      tier: heavy
+      provider: nim
+      model: "nvidia/nemotron-3-super-120b-a12b"
+      fallback: { provider: mistral, model: "mistral-large-2512" }
+
+    # --- guard: screens attacker-controlled payloads before they reach a judge model. On
+    #     Groq so it never consumes the NIM request budget the detectors need. If both are
+    #     unreachable the payload is still delimited and length-bounded before prompting.
+    payload_guard:
+      tier: guard
+      provider: groq
+      model: "meta-llama/llama-prompt-guard-2-86m"
+      fallback: { provider: nim, model: "nvidia/llama-3.1-nemotron-safety-guard-8b-v3" }

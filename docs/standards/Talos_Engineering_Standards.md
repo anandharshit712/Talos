@@ -725,5 +725,6 @@ CONFIG         thresholds and prompts live outside code — config/ and llm/prom
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-08-17 | Initial standards: R1 root cleanliness, R2 component taxonomy, R3 naming, R4 SQL/migration date-time stamps, R5 per-feature docs, R6 1,000/1,500 LOC limits, enforcement, LLD deltas |
+| 1.3 | 2026-08-18 | §1.1 now records that a local `.env` is tolerated at the root: git-ignored, never committed, and created by the documented setup steps. |
 | 1.2 | 2026-08-17 | Added `_aggregator` to the §3.1 role vocabulary. §2.1 already named `verdict_aggregator.py`, so the omission was a defect in the table, not in the file. |
 | 1.1 | 2026-08-17 | Corrected the §6.2 line-count command (`Measure-Object -Line` undercounts by skipping blank lines — replaced with `@(Get-Content).Count`). Added `docs/planning/` to §2.1. Added the §3.4 ABC exception for `_contract` modules. Renamed `sqli_*` → `sql_injection_*` and `idor/` → `broken_access_control/` throughout, matching LLD rev 1.1 §16.1. Marked §8 applied. |

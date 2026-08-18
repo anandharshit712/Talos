@@ -172,12 +172,28 @@ class OutputSettings(_Block):
     report_dir: Path = Path("out/reports")
 
 
+class ProviderProfile(_Block):
+    """One inference endpoint. All supported providers speak the OpenAI dialect (LLD 8.1)."""
+
+    base_url: str = Field(min_length=1)
+    api_key_env: str = Field(min_length=1)
+    """Name of the environment variable holding the key -- never the key itself."""
+
+
+class FallbackRoute(_Block):
+    """Where a route goes when its primary provider fails (LLD 8.3)."""
+
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+
+
 class ModelRoute(_Block):
     """One routing entry: which model answers for one detector or classifier (LLD 8.2)."""
 
-    model: str = Field(min_length=1)
     tier: str = Field(min_length=1)
-    fallback: str | None = None
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    fallback: FallbackRoute | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +314,7 @@ class TalosSettings(BaseSettings):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     llm: LlmSettings = Field(default_factory=LlmSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
+    providers: dict[str, ProviderProfile] = Field(default_factory=dict)
     routing: dict[str, ModelRoute] = Field(default_factory=dict)
     calibration: dict[str, dict[str, float]] = Field(default_factory=dict)
     """Per-detector calibration curve parameters, measured in P8 (LLD 9)."""
@@ -358,3 +375,13 @@ class TalosSettings(BaseSettings):
     def route_for(self, component: str) -> ModelRoute | None:
         """Return the routing entry for a detector or classifier name, if one is configured."""
         return self.routing.get(component)
+
+    def provider_for(self, name: str) -> ProviderProfile:
+        """Return a provider profile by name, or fail loudly naming what is configured."""
+        try:
+            return self.providers[name]
+        except KeyError:
+            raise ConfigError(
+                f"routing references provider {name!r}, which has no entry under "
+                f"talos.providers (configured: {sorted(self.providers)})"
+            ) from None

@@ -290,9 +290,18 @@ Enforced by the models, not by detector discipline:
       → [Talos_Model_Selection_Research.md](Talos_Model_Selection_Research.md) (2026-08-18)
 - [x] Found: `meta/codellama-13b-instruct` and `mistralai/mixtral-8x7b-instruct` do not exist —
       two of ten routing entries would have 404'd on first contact
-- [ ] **Awaiting approval of decisions D1–D6** in that document (routing shape, primary and
-      fallback provider, Gemini exclusion, guard model, single-client architecture)
-- [ ] Create the API keys and rewrite `config/model_routing.yaml` from the report's section 6
+- [x] Decisions D1–D6 approved (per-agent tiers, NIM primary, Groq + Mistral fallbacks, Gemini
+      excluded on privacy grounds, guard model in, single OpenAI-compatible client)
+- [x] Keys created for NIM, Groq, and Mistral; all three authenticate
+- [x] **Every routed model probed with a live completion — 10/10 answered** (2026-08-18)
+- [x] `config/model_routing.yaml` rewritten with providers, per-agent routes, and structured
+      fallbacks; `TalosSettings` gained `ProviderProfile` / `FallbackRoute` / `provider_for()`
+- [x] `scripts/check_model_availability.py` — reads the routing table, probes every entry,
+      exits non-zero on any failure
+- [x] Probing rejected four paper picks: `meta/llama-3.2-3b-instruct` (times out),
+      `mistralai/codestral-22b-instruct-v0.1` (404 for this account), `open-zai-glm-v5.2`
+      (wrong ID; the real `zai-glm-5-2` is 429-limited), `meta/llama-3.3-70b-instruct` (times out)
+- [ ] Wire `check_model_availability.py` into CI once P3 code lands
 
 ### P3.1 Client and routing
 
