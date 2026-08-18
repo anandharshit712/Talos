@@ -24,7 +24,7 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 | **P1** Contracts & core | D2 | Aug 19 | **done** | yes | yes |
 | **P2** Walking skeleton | D3–D4 | Aug 20–21 | **done** | yes | yes |
 | **P3** LLM layer | D5–D6 | Aug 22–23 | **done** | yes | yes |
-| **P4** Web injection | D7–D9 | Aug 24–26 | not started | — | — |
+| **P4** Web injection | D7–D9 | Aug 24–26 | **done** | yes | yes |
 | **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | not started | — | — |
 | **P6** Broken access control | D12–D14 | Aug 29–31 | not started | — | — |
 | **P7** Output surface | D15 | Sep 1 | not started | — | — |
@@ -370,48 +370,76 @@ Enforced by the models, not by detector discipline:
 
 ### P4.1 Ingestion and routing
 
-- [ ] `ingestion/parsers/web_log_parser.py` (~280) — combined / nginx-JSON / WAF-JSON autodetect,
-      URL-decoded **once**, raw preserved
-- [ ] `domains/web/web_type_classifier.py` (~160)
-- [ ] `domains/web/web_domain_agent.py` (~90)
-- [ ] `domains/web/injection/injection_sub_agent.py` (~70)
+- [x] `ingestion/parsers/web_log_parser.py` (243) — combined, nginx-JSON, and WAF-JSON
+      autodetected per line; decoded **exactly once**; WAF verdicts kept in `meta`
+- [x] `domains/web/web_type_classifier.py` (148) — injection markers checked **before** the
+      auth endpoint, so a payload aimed at `/login` is not routed to a failure counter
+- [x] `domains/web/web_domain_agent.py` (72)
+- [x] `domains/web/injection/injection_sub_agent.py` (53) — both detectors, concurrently
+- [x] `cli/main_cli.py` — `--domain web` selects the parser; the web agent is registered
 
 ### P4.2 Pattern tables and detectors
 
-- [ ] `detection/patterns/sql_injection_pattern_rules.py` (~250) — tautology, UNION, comment/evasion,
-      stacked queries, blind
-- [ ] `detection/patterns/xss_pattern_rules.py` (~220) — `<script>`, handlers, `javascript:`,
-      encoded variants, attribute breakouts
-- [ ] `domains/web/injection/sql_injection_detector.py` (~220)
-- [ ] `domains/web/injection/xss_detector.py` (~240) — reflected vs stored via the event window
-- [ ] **R6 watch:** at 700 lines, move the tables to `config/patterns/*.yaml` and keep the module as
-      loader + compiler (pre-decided, plan §4)
+- [x] `detection/patterns/pattern_engine.py` (139) — **new module**, shared extraction, matching,
+      evidence, and the three signal grades (standards §2.1 updated in the same commit)
+- [x] `detection/patterns/sql_injection_pattern_rules.py` (190) — tautology, union, stacked,
+      blind, evasion
+- [x] `detection/patterns/xss_pattern_rules.py` (166) — script tags, handlers, URI schemes,
+      encoded variants, breakouts
+- [x] `domains/web/injection/sql_injection_detector.py` (205)
+- [x] `domains/web/injection/xss_detector.py` (232) — stored vs reflected via the event window
+- [x] R6 watch: largest table is 190 lines, far under the 700-line externalisation trigger
 
 ### P4.3 Prompts
 
-- [ ] `llm/prompts/sql_injection_detector_judge_v1.md`
-- [ ] `llm/prompts/xss_detector_judge_v1.md`
-- [ ] `llm/prompts/web_type_classifier_route_v1.md`
+- [x] `llm/prompts/sql_injection_detector_judge_v1.md` — written so "no" is an expected answer
+- [x] `llm/prompts/xss_detector_judge_v1.md`
+- [x] `llm/prompts/web_type_classifier_route_v1.md`
 
 ### P4.4 Feature docs
 
-- [ ] `docs/features/web-log-ingestion/`
-- [ ] `docs/features/web-sql-injection-detection/` — pattern classes, borderline boundary, FP/FN modes
-- [ ] `docs/features/web-xss-detection/`
+- [x] `docs/features/web-log-ingestion/` — with `behaviour.md`
+- [x] `docs/features/web-sql-injection-detection/` — with `detection-logic.md`
+- [x] `docs/features/web-xss-detection/` — with `detection-logic.md`
 
 ### P4.5 Tests
 
-- [ ] Per-pattern-class positives for both detectors
-- [ ] **Benign lookalikes (mandatory)**: `'` in a surname, `SELECT` in a search box, `<b>` in a
-      comment, `onerror` in prose
-- [ ] Unambiguous payloads produce `used_llm=false` — the static layer carries the numbers
-- [ ] Stored-vs-reflected XSS classification; `succeeded` inferred from status code
+- [x] Per-pattern-class positives for both tables
+- [x] **Benign lookalikes: 17 for SQLi, 13 for XSS**, plus a 14-line benign corpus file
+- [x] Unambiguous payloads produce `used_llm=false` and make zero model calls
+- [x] The judge can veto; a fallback judgement costs 0.85×; no model means a lead, not a finding
+- [x] The model cannot invent scope
+- [x] Stored-vs-reflected: second endpoint → stored; same endpoint → reflected
+- [x] `succeeded` inferred from status code for both detectors
+- [x] 3 labelled fixtures + `tests/e2e/test_web_injection_precision.py`
 
-### P4.6 Gate
+### P4.6 Gate — **passed 2026-08-18**
 
-- [ ] ≥90% precision and ≥85% recall on the labeled fixture set for both detectors, with the LLM stub
+- [x] **SQL injection: precision 1.00, recall 1.00** (8/8, 0 FP) — gate 0.90 / 0.85
+- [x] **XSS: precision 1.00, recall 1.00** (6/6, 0 FP) — gate 0.90 / 0.85
+- [x] Measured with the model stubbed out; **zero model calls** during the gate
+- [x] Zero verdicts on the entire benign corpus
+- [x] Verified by hand: `talos scan --domain web` on the SQLi fixture reports 8 events, 6
+      incidents, `used_llm=false` throughout, `information_schema.tables` captured in scope
+- [x] `run_all_checks.py --strict`, ruff, mypy strict, 501 tests — all green
 
----
+**Honest reading of the numbers.** Perfect scores on an 8-attack, 6-attack, 14-benign corpus
+measure the corpus, not the detectors. The benign half is adversarially chosen, which makes it
+worth something; it is still 28 lines. P8 replaces these with measurements against Juice Shop,
+DVWA, and PortSwigger captures.
+
+### P4.7 Found while building
+
+- [x] **Double decode in the parser** — `parse_qsl` already decodes, and the parser decoded again,
+      turning `%2527` into `'`. The precise evasion LLD §5.2 forbids, live in the first
+      implementation. Caught by its own test before any detector existed.
+- [x] **A literal backspace byte in a regex** — a heredoc wrote `` instead of ``, so one XSS
+      rule silently never matched. A repository-wide control-character scan found no others.
+- [x] **Two unreachable branches** — the SQLi corroboration threshold was set above the number of
+      families that can reach it, and XSS had no actionable-ambiguous rule at all, so its judge
+      tier was dead code. Both now have tests asserting reachability.
+- [x] **`infer_target_table` read the matched fragment**, which by construction cannot contain the
+      table name following `UNION SELECT`.
 
 ## P5 — Auth Failure + RDP · D10–D11 (Aug 27–28)
 
@@ -597,6 +625,7 @@ stores plus a live API.
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-08-17 | Initial tracker: dashboard, per-phase/per-section checklists for P0–P9, cut order, open items. P0 and P1 recorded as done. |
+| 1.5 | 2026-08-18 | P4 recorded as done with measured precision/recall, the four defects found while building, and the honest reading of a 28-line corpus. |
 | 1.4 | 2026-08-18 | Code brought up to the 1.3 decisions: async store Protocols, dead provider settings removed, migration-set checking extended ahead of P6. Three storage limits added to open items. |
 | 1.3 | 2026-08-18 | Storage engine decided: PostgreSQL from P6, with P6.0 added as the migration section and a gate row for it. "Prototype scope" defined as breadth-only. Three storage limits added to open items. |
 | 1.2 | 2026-08-18 | P3 recorded as done with per-section detail, live gate evidence, and the injection defect the hardening suite caught. |

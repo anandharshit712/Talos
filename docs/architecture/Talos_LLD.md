@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.6 (2026-08-18) — see §16
+**Revision:** 1.7 (2026-08-18) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
 **Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the current slice (Web + Network) — a limit on breadth only, see HLD §1.5. Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
@@ -71,6 +71,7 @@ src/talos/
 │   ├── rate/
 │   │   └── rate_engine.py             # shared statistical core (web auth + network brute force)
 │   ├── patterns/
+│   │   ├── pattern_engine.py           # shared payload extraction + matching + signal grades
 │   │   ├── sql_injection_pattern_rules.py
 │   │   └── xss_pattern_rules.py
 │   └── baseline/
@@ -833,6 +834,22 @@ and the prototype-scope definition made wrong, or would have made wrong at P6.
 
 Unchanged on purpose: `sqlite3` and `INSERT OR REPLACE` stay in `storage/verdict_log_store.py`
 until P6.0 ports them (HLD §7.1 stages SQLite through P5), and `asyncpg` is not yet a dependency.
+
+### 16.7 Revision 1.7 — web injection, P4 (2026-08-18)
+
+| Change | Where | Why |
+|---|---|---|
+| **New module `detection/patterns/pattern_engine.py`** | §1 | SQLi and XSS differ in their tables and in nothing else: extraction, matching, evidence, and the signal grades are identical. Building it twice would guarantee the two drift. Documented in standards §2.1 in the same commit. |
+| **Three signal grades, not two** | §7.1, §7.2 | The LLD's `unambiguous` split forces every ambiguous hit to a model, and the most common ambiguous hits are punctuation and markup. A third grade, `corroborating_only`, lets a signal count toward a finding without ever starting one — which is what keeps `<b>bold</b>` from spending a request from a 40-per-minute budget. |
+| Certainty counts **actionable** families only | §7.1, §7.2 | Corroboration-grade hits support a finding but must never manufacture one: two noise signals together are still noise. |
+| Corroboration threshold is 2, not 3 | §7.1 | Only two families can fire ambiguously *and* actionably in either table, so a threshold of three made the branch unreachable. Tests now assert reachability. |
+| The judge may **veto** | §7.1, §7.2 | The LLD sketch had the model supply a confidence; it can also clear a borderline payload outright, and a judge that can only agree is not a judge. |
+| `infer_target_table` reads payloads, not hits | §7.1 | A hit's excerpt is the matched fragment, and `UNION SELECT` by construction does not contain the table that follows it. |
+| Classifier checks injection markers **before** the auth endpoint | §6 | A payload posted to `/login` is an injection attempt against the login form, not a failed login. Routing it to the auth sub-agent would hand a SQLi payload to a failure counter. |
+| Web classifier reuses the detectors' own tables | §6 | Routing cannot disagree with detection if both read the same rules. |
+| New XSS rule `unlisted_handler_in_tag` | §7.2 | Every other XSS rule is decisive or noise, which made the judge tier unreachable. A handler-shaped attribute with an unknown name is the genuine borderline case. |
+| Stored-vs-reflected keyed on a path-independent signature | §7.2 | The same payload arrives at one endpoint and renders at another; a signature including the endpoint could never match twice. Best-effort within the event window, and documented as such. |
+| Parser decodes exactly once — enforced | §5.2 | `parse_qsl` already decodes; an extra pass turned `%2527` into `'`, the precise evasion §5.2 forbids. A test pins the boundary. |
 
 ---
 *End of LLD.*
