@@ -286,8 +286,13 @@ Enforced by the models, not by detector discipline:
 
 ### P3.0 Verify before coding
 
-- [ ] Confirm model IDs and free-tier limits at `build.nvidia.com`; update `config/model_routing.yaml`
-      (the committed IDs are placeholders — a deprecated ID discovered in P8 breaks the schedule)
+- [x] Survey hosted free tiers and verify the NIM catalogue against the live `/v1/models` endpoint
+      → [Talos_Model_Selection_Research.md](Talos_Model_Selection_Research.md) (2026-08-18)
+- [x] Found: `meta/codellama-13b-instruct` and `mistralai/mixtral-8x7b-instruct` do not exist —
+      two of ten routing entries would have 404'd on first contact
+- [ ] **Awaiting approval of decisions D1–D6** in that document (routing shape, primary and
+      fallback provider, Gemini exclusion, guard model, single-client architecture)
+- [ ] Create the API keys and rewrite `config/model_routing.yaml` from the report's section 6
 
 ### P3.1 Client and routing
 
