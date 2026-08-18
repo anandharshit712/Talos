@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from stub_model_client import StubModelRouter
 
 from talos.core.agent_contracts import DetectionContext
 from talos.core.settings import TalosSettings
@@ -191,26 +192,6 @@ class NullBaselineStore:
         return None
 
 
-class RecordingModelClient:
-    """Records prompts and returns canned JSON. Calling it at all is a P2 test failure."""
-
-    def __init__(self, response: dict[str, Any] | None = None) -> None:
-        self.prompts: list[str] = []
-        self.response = response or {"confidence": 0.5, "reasoning": "stub"}
-
-    async def complete(
-        self,
-        *,
-        model: str,
-        prompt: str,
-        schema: dict[str, Any],
-        max_tokens: int,
-        timeout_s: float,
-    ) -> dict[str, Any]:
-        self.prompts.append(prompt)
-        return self.response
-
-
 @pytest.fixture
 def detection_ctx(talos_settings: TalosSettings) -> DetectionContext:
     """A real event window plus in-memory doubles -- no network, no database (LLD 14)."""
@@ -220,7 +201,9 @@ def detection_ctx(talos_settings: TalosSettings) -> DetectionContext:
             max_events_per_key=talos_settings.storage.event_window_max_events,
         ),
         baseline_store=NullBaselineStore(),
-        model_client=RecordingModelClient(),
+        # No replies configured: every caller takes its templated path. A test that wants a
+        # model answer builds its own StubModelRouter(replies=...).
+        model_client=StubModelRouter(),
         settings=talos_settings,
         verdict_log=RecordingVerdictLog(),
     )

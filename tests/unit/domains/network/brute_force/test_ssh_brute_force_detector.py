@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 
+from stub_model_client import StubModelRouter
+
 from talos.core.agent_contracts import DetectionContext
 from talos.domains.network.brute_force.ssh_brute_force_detector import SshBruteForceDetector
 from talos.schemas.event_schema import NormalizedEvent
@@ -37,16 +39,15 @@ def test_burst_produces_a_scoped_verdict(
     assert verdict.scope.succeeded is False
 
 
-def test_verdict_is_statistical_not_generated(
+def test_unreachable_model_falls_back_to_the_template(
     detection_ctx: DetectionContext, ssh_events: EventFactory
 ) -> None:
-    """P2 has no LLM at all, and the statistical path is a supported mode, not a fallback."""
+    """No model configured is an ordinary path: the verdict still ships, marked as statistical."""
     verdict = _run(detection_ctx, ssh_events(12))
     assert verdict is not None
     assert verdict.model.used_llm is False
     assert verdict.model.name == "none"
-    assert verdict.reasoning
-    assert detection_ctx.model_client.prompts == []  # type: ignore[attr-defined]
+    assert "12 failed SSH authentications" in verdict.reasoning
 
 
 def test_evidence_quotes_the_statistic_and_the_lines(
@@ -110,3 +111,66 @@ def test_thresholds_come_from_configuration(
     verdict = _run(detection_ctx, ssh_events(4))
     assert verdict is not None
     assert verdict.scope.attempt_count == 4
+
+
+def test_model_narrative_replaces_the_template(
+    detection_ctx: DetectionContext, ssh_events: EventFactory
+) -> None:
+    detection_ctx.model_client = StubModelRouter(
+        replies={"ssh_brute_force_detector": {"narrative": "Twelve failed logins, then success."}},
+        model_name="meta/llama-3.1-8b-instruct",
+        route_reason="nano tier via nim",
+    )
+    verdict = _run(detection_ctx, ssh_events(12))
+    assert verdict is not None
+    assert verdict.reasoning == "Twelve failed logins, then success."
+    assert verdict.model.used_llm is True
+    assert verdict.model.name == "meta/llama-3.1-8b-instruct"
+    assert verdict.model.route_reason == "nano tier via nim"
+
+
+def test_a_fallback_answer_costs_confidence(
+    detection_ctx: DetectionContext, ssh_events: EventFactory
+) -> None:
+    """The report must show a degraded answer as less certain, not equally certain."""
+    detection_ctx.model_client = StubModelRouter(
+        replies={"ssh_brute_force_detector": {"narrative": "spare model wrote this"}},
+        confidence_multiplier=0.85,
+    )
+    verdict = _run(detection_ctx, ssh_events(8))
+    assert verdict is not None
+    assert verdict.confidence == round(0.70 * 0.85, 3)
+
+
+def test_an_empty_narrative_falls_back_to_the_template(
+    detection_ctx: DetectionContext, ssh_events: EventFactory
+) -> None:
+    """A model that answers with nothing must not produce a verdict that says nothing."""
+    detection_ctx.model_client = StubModelRouter(
+        replies={"ssh_brute_force_detector": {"narrative": "   "}}
+    )
+    verdict = _run(detection_ctx, ssh_events(12))
+    assert verdict is not None
+    assert verdict.model.used_llm is False
+    assert "12 failed SSH authentications" in verdict.reasoning
+
+
+def test_the_model_cannot_change_the_detection(
+    detection_ctx: DetectionContext, ssh_events: EventFactory
+) -> None:
+    """Detection is the threshold's decision; the model only words it."""
+    detection_ctx.model_client = StubModelRouter(
+        replies={
+            "ssh_brute_force_detector": {
+                "narrative": "benign",
+                "attack_detected": False,
+                "confidence": 0.0,
+                "attempt_count": 0,
+            }
+        }
+    )
+    verdict = _run(detection_ctx, ssh_events(12))
+    assert verdict is not None
+    assert verdict.attack_detected is True
+    assert verdict.confidence >= 0.70
+    assert verdict.scope.attempt_count == 12

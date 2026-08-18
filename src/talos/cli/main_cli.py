@@ -6,7 +6,11 @@ P2 ships one subcommand::
 
 It reads a log file, runs every line through the real pipeline -- parser, window, orchestrator,
 domain agent, classifier, sub-agent, detector, aggregator, sinks -- and writes incident reports
-to the configured sinks. No LLM is involved anywhere; `used_llm` is false in every verdict.
+to the configured sinks.
+
+Models are optional. With provider keys set, narratives are model-written and `used_llm` is true;
+with none set, every detector falls back to its templated narrative and `used_llm` is false. Both
+paths produce the same detections, because detection is statistical and the model only words it.
 
 ``serve`` and ``replay`` arrive in P7.
 """
@@ -23,12 +27,13 @@ from pathlib import Path
 from typing import Any
 
 from talos.core.agent_contracts import DetectionContext
-from talos.core.error_types import ModelError, TalosError
+from talos.core.error_types import TalosError
 from talos.core.logging_setup import configure_logging
 from talos.core.settings import TalosSettings
 from talos.domains.network.network_domain_agent import NetworkDomainAgent
 from talos.ingestion.parser_contract import BaseParser
 from talos.ingestion.parsers.network_log_parser import NetworkLogParser
+from talos.llm.model_router import build_router
 from talos.orchestrator.agent_registry import AgentRegistry
 from talos.orchestrator.event_orchestrator import EventOrchestrator
 from talos.orchestrator.verdict_aggregator import VerdictAggregator
@@ -40,21 +45,6 @@ from talos.storage.verdict_log_store import VerdictLogStore
 _log = logging.getLogger("talos.cli")
 
 Sink = StdoutSink | JsonFileSink
-
-
-class _UnavailableModelClient:
-    """Stands in for the P3 model client. Detectors on the statistical path never call it."""
-
-    async def complete(
-        self,
-        *,
-        model: str,
-        prompt: str,
-        schema: dict[str, Any],
-        max_tokens: int,
-        timeout_s: float,
-    ) -> dict[str, Any]:
-        raise ModelError("no model client is configured -- the LLM layer arrives in P3")
 
 
 class _EmptyBaselineStore:
@@ -78,13 +68,18 @@ class ScanResult:
 
 def build_orchestrator(settings: TalosSettings, verdict_log: VerdictLogStore) -> EventOrchestrator:
     """Wire the pipeline. Registering a domain agent is the whole integration surface."""
+    router = build_router(settings)
+    _log.info(
+        "model providers available",
+        extra={"providers": router.providers or ["none -- templated narratives only"]},
+    )
     ctx = DetectionContext(
         event_window=EventWindowStore(
             ttl_seconds=settings.storage.event_window_ttl_seconds,
             max_events_per_key=settings.storage.event_window_max_events,
         ),
         baseline_store=_EmptyBaselineStore(),
-        model_client=_UnavailableModelClient(),
+        model_client=router,
         settings=settings,
         verdict_log=verdict_log,
     )

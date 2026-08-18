@@ -12,10 +12,10 @@ synchronous contract would serialise exactly the work worth overlapping. Statist
 simply never await. Recorded in LLD 16.2.
 
 **Services are Protocols.** ``DetectionContext`` is frozen in P1, but ``EventWindowStore``
-(P2), ``ModelClient`` (P3), and ``BaselineStore`` (P6) do not exist yet. Structural types let
-the context be precisely typed now and satisfied later without an import of a module that has
-not been written -- and they keep detectors testable against in-memory doubles, which is the
-point of the context existing at all (LLD 14).
+(P2), the model router (P3), and ``BaselineStore`` (P6) did not exist when it was written.
+Structural types let the context be precisely typed then and satisfied later without an import
+of a module nobody had built -- and they keep detectors testable against in-memory doubles,
+which is the point of the context existing at all (LLD 14).
 """
 
 from __future__ import annotations
@@ -52,18 +52,37 @@ class BaselineReader(Protocol):
     def put(self, baseline: Any) -> None: ...
 
 
-class ModelCaller(Protocol):
-    """Outbound LLM access, already routed to a model (LLD 8.1)."""
+@dataclass(frozen=True)
+class ModelOutcome:
+    """What a routed model call produced, and how much to trust it (LLD 8.2, 8.3)."""
 
-    async def complete(
+    data: dict[str, Any]
+    """The parsed JSON reply."""
+    model: str
+    """Resolved model id, for ``ModelInfo.name``."""
+    route_reason: str
+    """Why this model answered -- including "fallback" and its penalty."""
+    confidence_multiplier: float = 1.0
+    """Below 1.0 when a fallback answered; callers multiply their confidence by it."""
+
+
+class ModelCaller(Protocol):
+    """Routed LLM access (LLD 8.2).
+
+    Detectors name themselves and get an answer; which provider served it, whether a fallback
+    was used, and what penalty that carries are the router's business, not theirs. ``None``
+    means no model was reachable -- an ordinary path, not an error, and the reason
+    ``used_llm=False`` stays a supported mode.
+    """
+
+    async def complete_for(
         self,
+        component: str,
         *,
-        model: str,
         prompt: str,
         schema: dict[str, Any],
-        max_tokens: int,
-        timeout_s: float,
-    ) -> dict[str, Any]: ...
+        max_tokens: int = 512,
+    ) -> ModelOutcome | None: ...
 
 
 class VerdictRecorder(Protocol):

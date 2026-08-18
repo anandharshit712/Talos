@@ -95,7 +95,7 @@ testpaths = ["tests"]
 # tools/checks and scripts are on the path so the rule checkers and the migration runner are
 # importable by their tests, while staying runnable as plain scripts
 # (python tools/checks/run_all_checks.py, python scripts/apply_migrations.py).
-pythonpath = ["src", "tools/checks", "scripts", "."]
+pythonpath = ["src", "tools/checks", "scripts", "tests/support", "."]
 addopts = "-q --strict-markers"
 markers = [
     "integration: multi-component tests with real wiring",
