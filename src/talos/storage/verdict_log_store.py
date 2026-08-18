@@ -4,6 +4,10 @@ The full report is stored verbatim as JSON alongside the few columns worth query
 report is the record; the columns exist so "what did we conclude about this host last week"
 does not require reading every row.
 
+**The methods are ``async`` while the driver is not.** ``sqlite3`` is synchronous, so today the
+work happens inline; the signatures match the ``VerdictRecorder`` Protocol that P6 will satisfy
+with ``asyncpg``, so the port changes this module and nothing above it (HLD 7.1, LLD 16.6).
+
 **This store never creates its schema.** `src/` issues no DDL at all (standards 4.4 rule 5), so
 a missing table means migrations were not applied, and saying that plainly beats silently
 creating a table that then drifts from `db/migrations/`.
@@ -33,7 +37,7 @@ class VerdictLogStore:
         self._connection = sqlite3.connect(self.db_path)
         self._connection.row_factory = sqlite3.Row
 
-    def append(self, report: IncidentReport) -> None:
+    async def append(self, report: IncidentReport) -> None:
         """Record one incident. Re-recording the same ``incident_id`` replaces it."""
         self._execute(
             f"INSERT OR REPLACE INTO {TABLE_NAME} "
@@ -53,7 +57,7 @@ class VerdictLogStore:
         )
         self._connection.commit()
 
-    def get(self, incident_id: str) -> IncidentReport | None:
+    async def get(self, incident_id: str) -> IncidentReport | None:
         """Return one recorded incident, or ``None`` if it was never written."""
         cursor = self._execute(
             f"SELECT report_json FROM {TABLE_NAME} WHERE incident_id = ?", (incident_id,)
@@ -61,7 +65,7 @@ class VerdictLogStore:
         row = cursor.fetchone()
         return None if row is None else IncidentReport.model_validate_json(row["report_json"])
 
-    def recent(self, limit: int = 50) -> list[IncidentReport]:
+    async def recent(self, limit: int = 50) -> list[IncidentReport]:
         """The newest incidents first. Backs the report listing endpoint (P7)."""
         cursor = self._execute(
             f"SELECT report_json FROM {TABLE_NAME} ORDER BY created_at DESC LIMIT ?", (limit,)

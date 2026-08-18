@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from pathlib import Path
 
@@ -37,13 +38,13 @@ def migrated_db(tmp_path: Path) -> Path:
 def test_report_round_trips_through_sqlite(migrated_db: Path, sample_verdict: Verdict) -> None:
     with VerdictLogStore(migrated_db) as store:
         report = _report(sample_verdict)
-        store.append(report)
-        assert store.get("incident-1") == report
+        asyncio.run(store.append(report))
+        assert asyncio.run(store.get("incident-1")) == report
 
 
 def test_unknown_incident_is_none(migrated_db: Path) -> None:
     with VerdictLogStore(migrated_db) as store:
-        assert store.get("never-written") is None
+        assert asyncio.run(store.get("never-written")) is None
 
 
 def test_recent_returns_newest_first(migrated_db: Path, sample_verdict: Verdict) -> None:
@@ -52,9 +53,9 @@ def test_recent_returns_newest_first(migrated_db: Path, sample_verdict: Verdict)
         newer = _report(sample_verdict, "incident-new").model_copy(
             update={"created_at": older.created_at.replace(year=older.created_at.year + 1)}
         )
-        store.append(older)
-        store.append(newer)
-        assert [report.incident_id for report in store.recent()] == [
+        asyncio.run(store.append(older))
+        asyncio.run(store.append(newer))
+        assert [report.incident_id for report in asyncio.run(store.recent())] == [
             "incident-new",
             "incident-old",
         ]
@@ -64,17 +65,19 @@ def test_reappending_the_same_incident_replaces_it(
     migrated_db: Path, sample_verdict: Verdict
 ) -> None:
     with VerdictLogStore(migrated_db) as store:
-        store.append(_report(sample_verdict))
-        store.append(_report(sample_verdict).model_copy(update={"severity": "critical"}))
-        assert len(store.recent()) == 1
-        stored = store.get("incident-1")
+        asyncio.run(store.append(_report(sample_verdict)))
+        asyncio.run(
+            store.append(_report(sample_verdict).model_copy(update={"severity": "critical"}))
+        )
+        assert len(asyncio.run(store.recent())) == 1
+        stored = asyncio.run(store.get("incident-1"))
         assert stored is not None and stored.severity == "critical"
 
 
 def test_missing_schema_names_the_fix(tmp_path: Path, sample_verdict: Verdict) -> None:
     """src/ never issues DDL, so a missing table means migrations were not applied."""
     with VerdictLogStore(tmp_path / "empty.db") as store, pytest.raises(StorageError) as caught:
-        store.append(_report(sample_verdict))
+        asyncio.run(store.append(_report(sample_verdict)))
     assert "apply_migrations" in str(caught.value)
 
 

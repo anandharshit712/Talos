@@ -40,10 +40,10 @@ class _MemoryBaselines:
     def __init__(self) -> None:
         self.written: list[Any] = []
 
-    def get(self, account: str) -> Any | None:
+    async def get(self, account: str) -> Any | None:
         return None
 
-    def put(self, baseline: Any) -> None:
+    async def put(self, baseline: Any) -> None:
         self.written.append(baseline)
 
 
@@ -51,24 +51,23 @@ class _StubModel:
     def __init__(self) -> None:
         self.prompts: list[str] = []
 
-    async def complete(
+    async def complete_for(
         self,
+        component: str,
         *,
-        model: str,
         prompt: str,
         schema: dict[str, Any],
-        max_tokens: int,
-        timeout_s: float,
-    ) -> dict[str, Any]:
+        max_tokens: int = 512,
+    ) -> None:
         self.prompts.append(prompt)
-        return {"confidence": 0.5, "reasoning": "stub"}
+        return None
 
 
 class _MemoryVerdictLog:
     def __init__(self) -> None:
         self.reports: list[IncidentReport] = []
 
-    def append(self, report: IncidentReport) -> None:
+    async def append(self, report: IncidentReport) -> None:
         self.reports.append(report)
 
 
@@ -138,7 +137,7 @@ def test_context_carries_every_service(
 ) -> None:
     ctx.event_window.add(sample_event)
     assert ctx.event_window.query(key="bastion-01|root", within=120) == [sample_event]
-    assert ctx.baseline_store.get("root") is None
+    assert asyncio.run(ctx.baseline_store.get("root")) is None
     assert ctx.settings.detection.ssh_brute_force.fail_threshold == 8
 
 

@@ -178,17 +178,17 @@ class RecordingVerdictLog:
     def __init__(self) -> None:
         self.reports: list[IncidentReport] = []
 
-    def append(self, report: IncidentReport) -> None:
+    async def append(self, report: IncidentReport) -> None:
         self.reports.append(report)
 
 
 class NullBaselineStore:
     """Cold start for every account -- the P6 store is not built yet."""
 
-    def get(self, account: str) -> Any | None:
+    async def get(self, account: str) -> Any | None:
         return None
 
-    def put(self, baseline: Any) -> None:
+    async def put(self, baseline: Any) -> None:
         return None
 
 

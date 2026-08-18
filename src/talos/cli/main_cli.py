@@ -50,10 +50,10 @@ Sink = StdoutSink | JsonFileSink
 class _EmptyBaselineStore:
     """Stands in for the P6 baseline store. Cold start is the correct answer until then."""
 
-    def get(self, account: str) -> Any | None:
+    async def get(self, account: str) -> Any | None:
         return None
 
-    def put(self, baseline: Any) -> None:
+    async def put(self, baseline: Any) -> None:
         return None
 
 

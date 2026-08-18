@@ -65,7 +65,7 @@ class EventOrchestrator:
             )
             return None
 
-        self.ctx.verdict_log.append(report)
+        await self.ctx.verdict_log.append(report)
         _log.info(
             "incident reported",
             extra={

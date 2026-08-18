@@ -49,7 +49,7 @@ def reports(tmp_path: Path) -> list[IncidentReport]:
         )
         assert result.events > 0
         assert result.skipped_lines > 0  # the fixture contains noise on purpose
-        assert verdict_log.recent(), "incidents must reach the audit trail"
+        assert asyncio.run(verdict_log.recent()), "incidents must reach the audit trail"
     return collected
 
 

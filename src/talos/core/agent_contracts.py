@@ -45,11 +45,16 @@ class EventWindow(Protocol):
 
 
 class BaselineReader(Protocol):
-    """Per-account access baselines, persisted across runs (LLD 7.4)."""
+    """Per-account access baselines, persisted across runs (LLD 7.4).
 
-    def get(self, account: str) -> Any | None: ...
+    ``async`` because the store behind it moves to PostgreSQL over ``asyncpg`` in P6 (HLD 7.1).
+    A synchronous signature would either block the orchestrator's event loop on every baseline
+    read -- which is on the per-event hot path -- or force this contract to break a second time.
+    """
 
-    def put(self, baseline: Any) -> None: ...
+    async def get(self, account: str) -> Any | None: ...
+
+    async def put(self, baseline: Any) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -86,9 +91,15 @@ class ModelCaller(Protocol):
 
 
 class VerdictRecorder(Protocol):
-    """Audit trail of everything the pipeline concluded (LLD 4.2)."""
+    """Audit trail of everything the pipeline concluded (LLD 4.2).
 
-    def append(self, report: IncidentReport) -> None: ...
+    ``async`` for the same reason as :class:`BaselineReader`. Note what a synchronous signature
+    would have cost at P6: an ``asyncpg`` implementation returns a coroutine, the orchestrator's
+    un-awaited call would discard it, and reports would stop being persisted with no error and
+    no failing test. Recorded in LLD 16.6.
+    """
+
+    async def append(self, report: IncidentReport) -> None: ...
 
 
 @dataclass
