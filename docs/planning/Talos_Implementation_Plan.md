@@ -4,7 +4,9 @@
 **Document type:** Build Plan
 **Created:** 2026-08-17
 **Companion documents:** `../architecture/Talos_HLD.md`, `../architecture/Talos_LLD.md` (rev 1.1), `../architecture/Talos_DFD.md`, `../standards/Talos_Engineering_Standards.md`
-**Scope:** Hackathon slice — Web + Network domains, 8 leaf detectors, JSON/API output.
+**Scope:** Web + Network domains, 8 leaf detectors, JSON/API output. The two-domain limit is a
+limit on **breadth only** — everything inside it is built to deploy (HLD §1.5). No container or
+orchestration tooling this cycle; dependencies install natively.
 
 ---
 
@@ -22,7 +24,7 @@ by dropping planned scope in a chosen sequence rather than by shipping everythin
 | **P3** LLM layer | D5–D6 | Aug 22–23 | NIM client, routing, prompts, fallbacks |
 | **P4** Web injection | D7–D9 | Aug 24–26 | SQLi + XSS detectors, the flagship category |
 | **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | 3 more detectors on existing engines (cheap reuse) |
-| **P6** Broken access control | D12–D14 | Aug 29–31 | IDOR baseliner + deviation scorer, SQLite persistence |
+| **P6** Broken access control | D12–D14 | Aug 29–31 | IDOR baseliner + deviation scorer, **PostgreSQL migration** |
 | **P7** Output surface | D15 | Sep 1 | FastAPI, sinks, CLI polish |
 | **P8** Evaluation & calibration | D16–D17 | Sep 2–3 | precision/recall/F1, calibration curves, NFR evidence |
 | **P9** Demo & submission | D18 | Sep 4 | demo script, final docs, deliverables |
@@ -265,7 +267,9 @@ is green in both directions.
 | File | Est. LOC |
 |---|---|
 | `detection/baseline/access_baseline.py` — `AccessBaseline` + online update | 180 |
-| `storage/baseline_store.py` — SQLite-backed, per-account locking | 220 |
+| `storage/baseline_store.py` — PostgreSQL (`asyncpg`), per-account advisory locks | 220 |
+| `storage/postgres_connection_pool.py` — pool + reconnect, shared by both stores | 90 |
+| `storage/verdict_log_store.py` — ported off SQLite (`jsonb`, `ON CONFLICT DO UPDATE`) | +60 |
 | `domains/web/broken_access_control/broken_access_control_sub_agent.py` | 80 |
 | `domains/web/broken_access_control/access_baseliner.py` | 140 |
 | `domains/web/broken_access_control/deviation_scorer.py` | 260 |
@@ -359,13 +363,24 @@ Run `make check-size` at every phase gate, not at the end.
 
 ## 5. SQL and Migration Inventory
 
-All under `db/`, all stamped per R4, all with rollbacks. SQLite for the hackathon slice.
+All under `db/`, all stamped per R4, all with rollbacks.
 
-| Phase | Migration | Rollback |
-|---|---|---|
-| P2 | `create_verdict_log_table_<stamp>.sql` | required |
-| P6 | `create_access_baseline_table_<stamp>.sql` | required |
-| P6 | `index_access_baseline_by_account_<stamp>.sql` | required |
+**Engine: SQLite through P5, PostgreSQL from P6** (HLD §7.1). The trigger is `BaselineStore`:
+SQLite's write lock is database-wide, so its specified per-account locking is unachievable and its
+read-modify-write sits on the per-event hot path. A DDL dialect is not portable, so the PostgreSQL
+schema arrives as a **new baseline set** under `db/migrations/postgres/`. The SQLite files stay
+where they are, forward-only and unedited — they remain the applied history of any database
+already created from them.
+
+| Phase | Migration | Engine | Rollback |
+|---|---|---|---|
+| P2 | `create_verdict_log_table_<stamp>.sql` | sqlite | required |
+| P6 | `postgres/create_verdict_log_table_<stamp>.sql` | postgres | required |
+| P6 | `postgres/create_access_baseline_table_<stamp>.sql` | postgres | required |
+| P6 | `postgres/index_access_baseline_by_account_<stamp>.sql` | postgres | required |
+
+`scripts/apply_migrations.py` gains an engine argument in P6; the `schema_migrations` ledger lives
+in whichever database it is applied to, so the two sets never interleave.
 
 `scripts/apply_migrations.py` applies in timestamp order and records applied stamps in a
 `schema_migrations` table. **No `CREATE`/`ALTER` anywhere in `src/`** (R4.4 rule 5) — stores assume

@@ -46,8 +46,9 @@ is never edited. See [LLD §13](docs/architecture/Talos_LLD.md) for the worked e
 
 ## Status
 
-**Pre-alpha, under active development.** Hackathon slice: Web + Network domains, 8 leaf
-detectors. The end-to-end pipeline runs today for SSH brute force; see the
+**Pre-alpha, under active development.** The current slice covers Web + Network domains and 8
+leaf detectors. That is a limit on **breadth, not build quality** — everything inside it is built
+to deploy (HLD §1.5). The end-to-end pipeline runs today for SSH brute force; see the
 [build tracker](docs/planning/Talos_Build_Tracker.md) for exactly what is finished and the
 [implementation plan](docs/planning/Talos_Implementation_Plan.md) for what is scheduled.
 
@@ -59,7 +60,7 @@ cd Talos
 python -m pip install -e ".[dev]"
 pre-commit install
 
-cp .env.example .env        # add your NIM API key, or leave it blank to run statistics-only
+cp .env.example .env        # add provider keys, or leave them blank to run statistics-only
 ```
 
 Create the database, then scan a log:
@@ -78,7 +79,10 @@ brute_force on bastion-01 against root over 8 attempts  -- did not succeed (conf
 brute_force on bastion-01 against root over 12 attempts -- succeeded      (confidence 0.90)  [high]
 ```
 
-No model is contacted: `used_llm` is false on every verdict, by design.
+With no provider key configured, no model is contacted and `used_llm` is false on every verdict.
+With keys set, the same run produces the same two incidents with the same severities and counts —
+only the narrative changes, written by the routed model, and `used_llm` becomes true. Detection is
+statistical; the model words it (LLD §8).
 
 Verify the toolchain:
 

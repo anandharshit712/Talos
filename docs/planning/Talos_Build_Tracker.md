@@ -448,13 +448,45 @@ for the deliberate-reuse claim.
 
 **Goal:** the hardest category — no fixed payload, so it needs learned per-account baselines.
 **Most likely phase to slip** (plan §8): first cut candidate after RDP and credential stuffing.
+**Also carries the PostgreSQL migration** (P6.0) — it is the phase where SQLite stops being correct.
+
+### P6.0 PostgreSQL migration — do this before P6.1
+
+The trigger, in one line: SQLite's write lock is **database-wide**, so `baseline_store.py`'s
+specified per-account locking is unachievable on it, and the baseline's read-modify-write sits on
+the per-event hot path. Rationale in full: HLD §7.1, recorded as LLD §16.5. Porting here means one
+store moves and the other is written against PostgreSQL from the start; at P7 it would be two
+stores plus a live API.
+
+- [ ] PostgreSQL installed and running as a **native service** (no container — see plan scope note)
+- [ ] `db/migrations/postgres/` created; the SQLite set left unedited and forward-only (R4)
+- [ ] `db/migrations/postgres/create_verdict_log_table_<stamp>.sql` + rollback — `timestamptz`
+      for `created_at`, `jsonb` + GIN for `report_json`
+- [ ] `scripts/apply_migrations.py` (+60) — engine argument; the `schema_migrations` ledger lives
+      in whichever database it is applied to, so the two sets never interleave
+- [x] **Done early (2026-08-18):** `check_naming` enforces R4.3/R4.4 inside every migration set,
+      so the PostgreSQL set is checked the day it appears rather than shipping unverified;
+      standards §2.1 and §4.3 document `db/migrations/<engine>/`
+- [x] **Done early (2026-08-18):** store Protocols are `async`, so the port changes
+      implementations only — no orchestrator, agent, or detector edit (LLD §16.6)
+- [ ] `storage/postgres_connection_pool.py` (~90) — pool + reconnect, shared by both stores
+- [ ] `storage/verdict_log_store.py` (+60) — `asyncpg`, `ON CONFLICT (incident_id) DO UPDATE`
+      replacing `INSERT OR REPLACE`; store methods become `async`
+- [ ] `config/default.yaml` — `talos.storage.database` block (DSN by env var, pool bounds); the
+      DSN never enters the YAML tree
+- [ ] Test strategy decided and written down: unit tests against a fake behind `VerdictRecorder`,
+      integration suite against a live instance. **Testcontainers is not available** (needs Docker);
+      CI provisions PostgreSQL as a GitHub Actions service
+- [ ] `docs/features/incident-aggregation/changelog.md` — engine change recorded
+- [ ] **Verify:** `VerdictRecorder` / `BaselineReader` Protocols unchanged — no agent or detector
+      touched by this port
 
 ### P6.1 Baseline machinery
 
 - [ ] `detection/baseline/access_baseline.py` (~180) — `AccessBaseline` + online update
-- [ ] `storage/baseline_store.py` (~220) — SQLite-backed, per-account locking
-- [ ] `db/migrations/create_access_baseline_table_<stamp>.sql` + rollback
-- [ ] `db/migrations/index_access_baseline_by_account_<stamp>.sql` + rollback
+- [ ] `storage/baseline_store.py` (~220) — PostgreSQL (`asyncpg`), per-account advisory locks
+- [ ] `db/migrations/postgres/create_access_baseline_table_<stamp>.sql` + rollback
+- [ ] `db/migrations/postgres/index_access_baseline_by_account_<stamp>.sql` + rollback
 
 ### P6.2 Detection
 
@@ -480,6 +512,8 @@ for the deliberate-reuse claim.
 ### P6.5 Gate
 
 - [ ] Enumeration detected with correct object-level scope, zero false positives on the benign corpus
+- [ ] Both stores run on PostgreSQL; the full suite passes against it, and two concurrent writers
+      (baseline update + verdict append) complete without a lock error
 
 ---
 
@@ -547,6 +581,11 @@ for the deliberate-reuse claim.
 | Suppression state is per-process, capped at 2048 signatures | P2 | P7 | fine for a scan; a long-running service wants a TTL map (`ponytail:` comment in `event_orchestrator.py`) |
 | One incident per escalation, not per campaign | P2 | P8 | a burst that doubles re-reports; whether that is the right cadence is a calibration question |
 | Calibration curve values empty | P1 | P8 | shape fixed (`detector -> {parameter: float}`), values measured in P8 |
+| `EventWindowStore` is RAM-only | P2 | P7 | a restart mid-burst loses every in-flight window, so the detector forgets an attack in progress. Fix is persistence or replay-on-start; neither belongs in P6 |
+| No retention policy on `verdict_log` | P2 | P7 | the incident log grows without bound. Cheap once on PostgreSQL (partition or a dated delete); decide the window first |
+| Stores hold one connection, no reconnect | P2 | **P6** | `VerdictLogStore` opens a connection in `__init__` and never recovers if it drops. Closed by `postgres_connection_pool.py` in P6.0 |
+| `db_path` is a file path, not a DSN | P1 | **P6** | `TalosSettings.db_path` and `talos scan --db` assume a file. P6.0 adds the `talos.storage.database` block; the CLI flag becomes engine-aware |
+| SQLite dialect still in `src/` | P2 | **P6** | `INSERT OR REPLACE` and the `sqlite3` import in `verdict_log_store.py`. Correct until P5 per HLD §7.1; P6.0 replaces both |
 
 ---
 
@@ -555,5 +594,7 @@ for the deliberate-reuse claim.
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-08-17 | Initial tracker: dashboard, per-phase/per-section checklists for P0–P9, cut order, open items. P0 and P1 recorded as done. |
+| 1.4 | 2026-08-18 | Code brought up to the 1.3 decisions: async store Protocols, dead provider settings removed, migration-set checking extended ahead of P6. Three storage limits added to open items. |
+| 1.3 | 2026-08-18 | Storage engine decided: PostgreSQL from P6, with P6.0 added as the migration section and a gate row for it. "Prototype scope" defined as breadth-only. Three storage limits added to open items. |
 | 1.2 | 2026-08-18 | P3 recorded as done with per-section detail, live gate evidence, and the injection defect the hardening suite caught. |
 | 1.1 | 2026-08-18 | P2 recorded as done with per-section detail and measured gate results; open items updated (window config closed, two suppression items added). |

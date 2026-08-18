@@ -2,9 +2,9 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.4 (2026-08-18) — see §16
+**Revision:** 1.6 (2026-08-18) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
-**Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the hackathon slice (Web + Network). Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
+**Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the current slice (Web + Network) — a limit on breadth only, see HLD §1.5. Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
 **Structural conformance:** all paths, module names, and class names in this document conform to
 `../standards/Talos_Engineering_Standards.md` (rules R1–R6). Where this document and the standards
@@ -801,6 +801,38 @@ Full evidence in `../research/Talos_Model_Selection_Research.md`.
 | Five tiers named in config (`nano`, `small`, `code`, `long_context`, `heavy`, `guard`) | §8.2 | Re-verification each phase is five checks, not ten. |
 | **`DetectionContext.model_client` is the router, not a raw client** | §3, §8.1 | P1 froze `ModelCaller.complete(model=..., ...)`, which would have forced every detector to resolve its own model, retries, fallback, and penalty. It is now `complete_for(component, prompt=..., schema=...) -> ModelOutcome \| None`: a detector names itself and gets an answer. A frozen-contract change, made deliberately and recorded here. |
 | Identifiers are sealed, not quoted as facts | §8.3 | The injection suite caught it: account and host names come from the log, so an attacker picks them, and they were being rendered into the prompt's *trusted* section. Accounts, hosts, sources, and raw lines are now sealed together. |
+
+### 16.5 Revision 1.5 — storage engine decided; prototype scope defined (2026-08-18)
+
+No code changed with this revision. It records a decision that was implicit and is now explicit,
+because the implicit version was being read as licence to under-build.
+
+| Change | Where | Why |
+|---|---|---|
+| **"Prototype scope" means breadth, not build quality** | HLD §1.5 (new) | The two-domain limit constrains which categories exist, not how well anything is built. Storage, concurrency, error handling, and operational behaviour are designed to deploy. A choice is justified by whether it survives deployment, never by the project's stage. |
+| **Relational engine: PostgreSQL, from P6** | §4.2, §12; HLD §7.1 | Talos's deployed shape is a multi-writer service. SQLite's write lock is **database-wide**, so `BaselineStore`'s specified per-account locking is unachievable on it, and the baseline's read-modify-write is on the per-event hot path. P7 then adds the API as a second process against the same file. P6 is both the phase where this first breaks correctness and the last phase where only one store must be ported. |
+| The PostgreSQL schema is a **new baseline migration set**, not an edit | §5 (plan) | DDL dialects are not portable. `db/migrations/postgres/` holds the new set; the SQLite files stay forward-only and unedited per R4, remaining the applied history of any database already built from them. |
+| `timestamptz` replaces ISO-8601 `TEXT` for `created_at` | §4.2 | `recent()` orders by `created_at DESC` on a text column. `UtcDatetime` currently keeps that sort correct by construction; a column type should not depend on an upstream validator holding. |
+| `report_json TEXT` → `jsonb` + GIN | §4.2 | The full report is stored verbatim so a record survives column drift. On `jsonb` the nested verdicts, detectors, and evidence become queryable without unnesting — which is what makes the audit trail an audit trail rather than a blob. |
+| Stores become `async` over `asyncpg` | §3, §4.2 | `sqlite3` is synchronous inside an `asyncio` orchestrator: every write blocks the event loop. The `VerdictRecorder` and `BaselineReader` Protocols absorb the change — no agent or detector is affected. |
+| **No container or orchestration tooling this cycle** | HLD §9, §13 | The development machine cannot carry Docker or Kubernetes, so every dependency must install natively — PostgreSQL does. This constrains packaging, not architecture; nothing in the design assumes a container runtime. |
+| `EventWindowStore` stays in memory | §12 | Restart loses in-flight windows. Recorded as a known limit with a named owner phase (tracker, open items) rather than silently accepted — the fix is persistence or replay-on-start, and neither belongs in P6. |
+
+### 16.6 Revision 1.6 — code brought up to the 1.5 decisions (2026-08-18)
+
+Revision 1.5 changed no code. This one applies it: the parts of P0–P3 that the storage decision
+and the prototype-scope definition made wrong, or would have made wrong at P6.
+
+| Change | Where | Why |
+|---|---|---|
+| **`VerdictRecorder.append`, `BaselineReader.get`/`put` are now `async`** | §3 | 16.5 said the Protocols would "absorb" the move to `asyncpg`. They could not: an `async` implementation behind a `def` signature returns a coroutine, the orchestrator's un-awaited call discards it, and **reports silently stop being persisted** — no exception, no failing test. Changing the signatures now costs one `await`; at P6 it would have cost a second frozen-contract break plus that debugging session. A P1-frozen contract, changed deliberately. |
+| The e2e audit-trail assertion was vacuous | tests | `assert verdict_log.recent()` on a coroutine is always true. Found by the same change, which is the argument for making it now rather than at P6. |
+| `VerdictLogStore` methods are `async` over a sync driver | §4.2 | `sqlite3` stays until P6; only the signatures move, so the port changes that module and nothing above it. |
+| Five dead provider fields removed from `TalosSettings` | §10 | `model_backend`, `nim_api_key`, `nim_base_url`, `vllm_base_url`, `ollama_base_url` predate rev 1.4's provider profiles and were read by nothing. Settings can no longer hold a credential at all — a test asserts it — so nothing there can log or serialise one. |
+| `db/migrations/<engine>/` documented and enforced | §5 (plan); standards §2.1, §4.3 | The pairing and header checks globbed the top level only, so the P6 PostgreSQL set would have shipped **unchecked**. `check_naming` now discovers every set; five tests cover it, including that `rollback/` is not mistaken for an engine. |
+
+Unchanged on purpose: `sqlite3` and `INSERT OR REPLACE` stay in `storage/verdict_log_store.py`
+until P6.0 ports them (HLD §7.1 stages SQLite through P5), and `asyncpg` is not yet a dependency.
 
 ---
 *End of LLD.*

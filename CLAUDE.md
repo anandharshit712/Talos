@@ -27,7 +27,7 @@ Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
 ## Where the build stands
 
-**P0 and P1 are done. P2 (walking skeleton) is next.**
+**P0–P3 are done. P4 (web injection, the flagship category) is next.**
 [docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) is the live record —
 every phase, section, file, test, and gate. **Tick its boxes in the same commit as the work.**
 
@@ -41,6 +41,9 @@ and a note in the tracker. What is already settled and must not be re-litigated 
   < `local.yaml` < `TALOS_*` env. Every config file is rooted at one `talos:` key; bad values
   raise `ConfigError` at load.
 - MITRE/OWASP come from `knowledge/`; never hand-type a technique id in a detector.
+- Store methods are `async` (`VerdictRecorder`, `BaselineReader`) — the P6 PostgreSQL port
+  changes the implementation only. Detectors reach models through `ctx.model_client.complete_for`,
+  never a provider or model id.
 
 ## Commits and pushes
 
@@ -53,6 +56,24 @@ in the subject, body, or trailers. The same applies to pull request descriptions
 names. The commit author is the human who owns the change. `.claude/settings.json` sets
 `includeCoAuthoredBy: false` so the trailer is not added in the first place; this rule stands
 whether or not that setting is present.
+
+## What "prototype scope" means
+
+**Two domains — web and network — and nothing else.** That is a limit on *breadth*, not on build
+quality. Everything inside those two domains is built as a product that could be deployed:
+storage, concurrency, error handling, observability, and security posture are all judged on
+whether they survive a real deployment. **"It's only a prototype" is never a reason to pick the
+weaker option.** Where something is deliberately staged, the design names the trigger and the
+phase that carries it (HLD §1.5).
+
+One carve-out: **no Docker or Kubernetes this cycle** — the development machine cannot carry them.
+Dependencies must install and run natively. This constrains packaging and local tooling, not
+architecture.
+
+**Storage:** SQLite through P5, **PostgreSQL from P6** (HLD §7.1, LLD §16.5). The trigger is
+`BaselineStore` — SQLite's write lock is database-wide, so per-account locking is unachievable and
+the baseline's read-modify-write sits on the per-event hot path. Do not add SQLite-specific SQL to
+`src/`; both stores sit behind Protocols so the engine stays invisible to agents.
 
 ## Project-specific conventions
 

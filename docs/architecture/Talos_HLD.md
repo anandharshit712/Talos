@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** High-Level Design
-**Scope of this document:** Hackathon prototype (Web Application + Network domains) with the long-term architecture called out where it shapes near-term decisions.
+**Scope of this document:** Talos as a product, narrowed to two domains — Web Application and Network. The narrowing is one of **breadth, not build quality**: everything inside those two domains is designed and built to run in a real deployment (see §1.5).
 **Status:** Baseline
 **Related documents:** `Talos_LLD.md` (Low-Level Design), `Talos_DFD.md` (Data Flow), `Talos_Architecture_Diagram.svg`, `../submission/Talos_Problem_Statement_and_Solution_Document.md`, `../standards/Talos_Engineering_Standards.md` (repo rules R1–R6), `../planning/Talos_Implementation_Plan.md`
 
@@ -20,7 +20,17 @@ Talos automates three tasks that dominate an analyst's time when triaging a secu
 2. **Scoping** — determining *how far* an attack spread: which accounts, endpoints, objects, or hosts were touched, and whether it succeeded.
 3. **Transparency** — surfacing the *reasoning and evidence* behind every verdict instead of a single opaque score.
 
-The hackathon build is a **vertical slice** across two domains — Web Application and Network — proving the architecture generalizes. It is deliberately deep on a focused set of categories rather than shallow across many.
+The current build is a **vertical slice** across two domains — Web Application and Network — proving the architecture generalizes. It is deliberately deep on a focused set of categories rather than shallow across many.
+
+### 1.5 What "prototype scope" does and does not mean
+Talos is being built as a product that could be deployed, not as a demo that survives one showing. The prototype label constrains exactly two things:
+
+| Constrained | Not constrained |
+|---|---|
+| **Breadth** — two domains (Web Application, Network) and the categories in §4, not the full catalogue. | Storage, concurrency, error handling, observability, security posture, and operational behaviour. Each is designed for a real deployment. |
+| **Packaging** — no container images or orchestration this cycle; Talos runs as a native process/service (§9, §13). | The architecture itself. Nothing here is shaped around being containerised later — containers are a distribution question, not a design one. |
+
+A choice is never justified by "it is only a prototype"; it is justified by whether it survives deployment. Where a component is deliberately staged — storage is the clear case (§7.1) — the design names the trigger that forces the change and the phase that carries it.
 
 ### 1.3 Intended audience
 Contributors building or extending Talos, judges/reviewers evaluating the design, and security practitioners assessing whether the detection logic is trustworthy.
@@ -164,7 +174,7 @@ flowchart TD
 ### 5.2 Ingestion Layer
 - **Web Log Parser:** parses HTTP access/WAF/app logs → normalizes method, path, query params, body, headers, status, actor (source IP, session, user-agent) into `NormalizedEvent(domain="web")`.
 - **Network/Auth Log Parser:** parses SSH/RDP auth logs and flow records → normalizes connection tuples, auth outcome, protocol, targeted account, timing into `NormalizedEvent(domain="network")`.
-- For the hackathon, parsers can run in **batch** (replay a captured log file as if live) or **stream** mode; downstream components are agnostic to which.
+- Parsers run in **batch** (replay a captured log file as if live) or **stream** mode; downstream components are agnostic to which, and replay is a supported operating mode rather than a test fixture.
 
 ### 5.3 Domain Agents
 | Agent | Consumes | Hands off to |
@@ -233,13 +243,31 @@ Three canonical schemas span the system (field-level detail in the LLD):
 2. **`Verdict`** — the leaf-detector output; the contract the aggregator reads.
 3. **`IncidentReport`** — the aggregated, SIEM/SOAR-ready output.
 
-**Data stores (hackathon-scale, pluggable):**
-| Store | Purpose | Lifetime |
-|---|---|---|
-| Event window buffer | rolling window of recent events for rate detectors | seconds–minutes (TTL) |
-| Per-user access baseline | IDOR baseliner's learned normal access | persistent (per user) |
-| Verdict/incident log | audit trail of every verdict + evidence | persistent |
-| Model routing config | agent→model map + thresholds | static config |
+**Data stores.** Every persistent store sits behind a `Protocol` in `DetectionContext`, so the engine underneath is an infrastructure decision no agent or detector can observe.
+
+| Store | Purpose | Lifetime | Engine |
+|---|---|---|---|
+| Event window buffer | rolling window of recent events for rate detectors | seconds–minutes (TTL) | in-process (RAM) |
+| Per-user access baseline | IDOR baseliner's learned normal access | persistent (per user) | PostgreSQL, from P6 |
+| Verdict/incident log | audit trail of every verdict + evidence | persistent | SQLite through P5, PostgreSQL from P6 |
+| Model routing config | agent→model map + thresholds | static config | YAML under `config/` |
+
+### 7.1 Relational engine: PostgreSQL, staged in at P6
+
+**Talos's deployed shape is a multi-writer service** — ingestion, the report API (§10), and the baseline updater all write concurrently. That shape, not corpus size, picks the engine.
+
+SQLite carries the walking skeleton honestly: the pipeline runs single-process with exactly one writer, and the store needs no service to provision. It stops being correct at **P6**, for reasons that are structural rather than about scale:
+
+- SQLite's write lock is **database-wide**, not per-row or per-table. `BaselineStore`'s per-account locking cannot actually be per-account, and every baseline write serialises against the verdict log.
+- The baseline is a read-modify-write **on the per-event hot path** — exactly the access pattern that lock punishes.
+- P7 adds the report API as a second process against the same store. WAL mode raises the ceiling; it does not remove it.
+- The driver is synchronous inside an `asyncio` orchestrator, so every write blocks the event loop.
+
+**The migration lands in P6**: the phase where the constraint first breaks correctness, and the last phase where only one store must be ported while the other (`BaselineStore`) is written against PostgreSQL from the start. Deferring to P7 means porting two stores plus a live API.
+
+What changes at the port — `timestamptz` instead of ISO-8601 text (removing a dependency on lexical date sorting), `jsonb` + GIN over the stored report instead of an opaque `TEXT` blob, `ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE`, and `asyncpg` instead of a blocking driver. A DDL dialect is not portable, so the PostgreSQL schema arrives as a **new baseline migration set** under `db/migrations/postgres/` rather than as edits to the SQLite files, which stay forward-only per R4.
+
+PostgreSQL installs and runs as a native service; it does not require the container tooling excluded in §13.
 
 ---
 
@@ -255,8 +283,8 @@ Per-sub-agent model specialization is **architecturally preferred**, not just po
 | Contextual/behavioral | IDOR Deviation Scorer | large MoE (120B, ~12B active) | weigh a full access history; fewer calls per event |
 | Adversarial input screening | payload guard | tiny classifier (86M) | flag prompt injection in log content before a judge model reads it |
 
-**Deployment:** hackathon → hosted free tiers, primarily NVIDIA NIM, with Groq and Mistral as
-cross-provider fallbacks; long-term → self-host the same open-weight models. All three providers
+**Inference:** currently hosted free tiers — primarily NVIDIA NIM, with Groq and Mistral as
+cross-provider fallbacks; self-hosting the same open-weight models is a config change, not a port. All three providers
 speak the OpenAI dialect, so a provider is a base URL plus a key-variable name in config, and a
 swap needs no code (LLD §8.1).
 
@@ -269,7 +297,7 @@ this account no code-specialist model, so the code tier is led by Mistral's Code
 
 ## 9. Technology Stack (proposed)
 
-| Concern | Choice (hackathon) | Notes |
+| Concern | Choice | Notes |
 |---|---|---|
 | Language | Python 3.11+ | matches ML/security tooling ecosystem |
 | Agent orchestration | in-process async orchestrator (asyncio) | no heavyweight framework needed for the slice |
@@ -277,8 +305,10 @@ this account no code-specialist model, so the code tier is led by Mistral's Code
 | Static pre-filters | Python `re` / rule tables | deterministic first line for SQLi/XSS |
 | Schemas / validation | Pydantic models | enforce `NormalizedEvent` / `Verdict` contracts |
 | Output | JSON over REST API (FastAPI) + file/stdout sink | SIEM/SOAR-consumable |
+| Relational store | SQLite through P5 → **PostgreSQL** from P6 | multi-writer service; rationale and trigger in §7.1 |
+| Async DB driver | `asyncpg`, arriving with the port | a synchronous driver blocks the orchestrator's event loop |
 | Test data | OWASP Juice Shop, DVWA, PortSwigger labs, Cowrie honeypot logs | attack + benign traffic |
-| Packaging | `pip` package + `docker-compose` demo | community self-host path |
+| Packaging | `pip` package + native service install | container images deferred this cycle (§13); nothing in the design depends on them |
 
 ---
 
@@ -286,22 +316,25 @@ this account no code-specialist model, so the code tier is led by Mistral's Code
 
 ```mermaid
 flowchart LR
-    subgraph Demo["Hackathon Demo Deployment"]
+    subgraph Now["Current - single node, hosted inference"]
         direction TB
         LOGS[(Replayed / live logs)] --> TALOS1[Talos process - asyncio]
-        TALOS1 -->|inference| NIM[(NVIDIA NIM hosted API)]
+        TALOS1 -->|inference| NIM[(NVIDIA NIM / Groq / Mistral)]
+        TALOS1 --> DB1[(SQLite -> PostgreSQL at P6)]
         TALOS1 --> OUT1[(JSON reports + API)]
     end
-    subgraph Prod["Long-Term Self-Hosted"]
+    subgraph Prod["Self-hosted - inference on local GPUs"]
         direction TB
         LOGS2[(Live telemetry stream)] --> TALOS2[Talos service]
         TALOS2 -->|inference| LOCAL[(vLLM / Ollama - local GPUs)]
+        TALOS2 --> DB2[(PostgreSQL)]
         TALOS2 --> SIEM2[(SIEM / SOAR)]
     end
 ```
 
-- **Hackathon:** single process, hosted models, replayed telemetry — zero GPU provisioning, fastest path to a working multi-model pipeline.
-- **Long-term:** same code, models self-hosted; the project never depends on one vendor's hosted availability.
+- **Current:** single node, hosted models, PostgreSQL from P6 — no GPU provisioning and no container runtime needed to stand it up.
+- **Self-hosted:** same code, same store; only the inference endpoint moves. The project never depends on one vendor's hosted availability.
+- These are the **same deployment topology**, not a demo path and a real path. Multi-node scale-out is a later concern, and the store choice (§7.1) is what stops it being a rewrite.
 
 ---
 
@@ -320,7 +353,7 @@ flowchart LR
 
 ## 12. Non-Functional Requirements
 
-| ID | NFR | Target (hackathon) |
+| ID | NFR | Target (current slice) |
 |---|---|---|
 | NFR-1 | Detection latency (event → verdict) | ≤ a few seconds for statistical detectors; classifier sub-second |
 | NFR-2 | Precision / recall | reported per sub-agent with F1; benign-traffic pass mandatory |
@@ -339,8 +372,9 @@ flowchart LR
 - For the demo there is no live production traffic; Juice Shop/DVWA/Cowrie stand in as realistic sources.
 
 **Constraints**
-- Fixed prototype deadline; scope frozen to web + network (see project memory).
-- Free-tier hosted model rate limits during the demo.
+- Fixed prototype deadline; scope frozen to web + network — a limit on **breadth only** (§1.5).
+- Free-tier hosted model rate limits.
+- **No container or orchestration tooling in this cycle.** Docker and Kubernetes are excluded because the development machine cannot carry them, so every dependency must install and run natively — PostgreSQL included. This constrains packaging and local tooling, not architecture.
 
 **Risks & mitigations**
 | Risk | Mitigation |
