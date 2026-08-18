@@ -31,8 +31,10 @@ from talos.core.error_types import TalosError
 from talos.core.logging_setup import configure_logging
 from talos.core.settings import TalosSettings
 from talos.domains.network.network_domain_agent import NetworkDomainAgent
+from talos.domains.web.web_domain_agent import WebDomainAgent
 from talos.ingestion.parser_contract import BaseParser
 from talos.ingestion.parsers.network_log_parser import NetworkLogParser
+from talos.ingestion.parsers.web_log_parser import WebLogParser
 from talos.llm.model_router import build_router
 from talos.orchestrator.agent_registry import AgentRegistry
 from talos.orchestrator.event_orchestrator import EventOrchestrator
@@ -85,6 +87,7 @@ def build_orchestrator(settings: TalosSettings, verdict_log: VerdictLogStore) ->
     )
     registry = AgentRegistry()
     registry.register_domain_agent(NetworkDomainAgent())
+    registry.register_domain_agent(WebDomainAgent())
     return EventOrchestrator(registry, VerdictAggregator(settings), ctx)
 
 
@@ -130,13 +133,11 @@ def _run_scan(args: argparse.Namespace) -> int:
     verdict_log = VerdictLogStore(args.db or settings.db_path)
     try:
         orchestrator = build_orchestrator(settings, verdict_log)
+        parser: BaseParser = (
+            WebLogParser() if args.domain == "web" else NetworkLogParser(default_year=args.year)
+        )
         result = asyncio.run(
-            scan_file(
-                args.file,
-                NetworkLogParser(default_year=args.year),
-                orchestrator,
-                build_sinks(settings, args.pretty),
-            )
+            scan_file(args.file, parser, orchestrator, build_sinks(settings, args.pretty))
         )
     finally:
         verdict_log.close()
@@ -158,6 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--db", type=Path, default=None, help="SQLite path for the verdict log")
     scan.add_argument(
         "--config-dir", type=Path, default=None, help="directory holding the YAML config"
+    )
+    scan.add_argument(
+        "--domain",
+        choices=("network", "web"),
+        default="network",
+        help="telemetry the file holds; picks the parser (default: network)",
     )
     scan.add_argument("--year", type=int, default=None, help="year for year-less syslog stamps")
     scan.add_argument("--pretty", action="store_true", help="indent the JSON written to stdout")
