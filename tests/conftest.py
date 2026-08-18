@@ -21,7 +21,7 @@ from stub_model_client import StubModelRouter
 from talos.core.agent_contracts import DetectionContext
 from talos.core.settings import TalosSettings
 from talos.knowledge.mitre_mapping import mitre_for
-from talos.schemas.event_schema import Actor, AuthEvent, NormalizedEvent, Target
+from talos.schemas.event_schema import Actor, AuthEvent, NormalizedEvent, Target, WebRequest
 from talos.schemas.report_schema import IncidentReport
 from talos.schemas.verdict_schema import Evidence, ModelInfo, Scope, Verdict
 from talos.storage.event_window_store import EventWindowStore
@@ -238,6 +238,48 @@ def make_ssh_event_impl(
             f"from {source_ip} port 51234 ssh2"
         ),
     )
+
+
+def make_web_event_impl(
+    *,
+    path: str = "/search",
+    query: dict[str, str] | None = None,
+    body: str | None = None,
+    method: str = "GET",
+    status: int = 200,
+    source_ip: str = "203.0.113.50",
+    account: str | None = None,
+    host: str = "shop.example.com",
+    offset_seconds: int = 0,
+    start: datetime = BURST_START,
+) -> NormalizedEvent:
+    """One HTTP request event, already parsed. The unit of web detection."""
+    timestamp = start + timedelta(seconds=offset_seconds)
+    params = query or {}
+    rendered = "&".join(f"{key}={value}" for key, value in params.items())
+    return NormalizedEvent(
+        event_id=uuid.uuid4().hex,
+        timestamp=timestamp,
+        domain="web",
+        telemetry_source="app_log",
+        actor=Actor(source_ip=source_ip, account=account, user_agent="Mozilla/5.0"),
+        target=Target(host=host, endpoint=path),
+        request=WebRequest(
+            method=method,
+            path=path,
+            query_params=params,
+            body=body,
+            headers={},
+            status_code=status,
+        ),
+        raw=f'{source_ip} - - [15/Aug/2026] "{method} {path}?{rendered}" {status} 100',
+    )
+
+
+@pytest.fixture
+def make_web_event() -> Callable[..., NormalizedEvent]:
+    """Factory for a parsed HTTP request; see :func:`make_web_event_impl` for the knobs."""
+    return make_web_event_impl
 
 
 @pytest.fixture

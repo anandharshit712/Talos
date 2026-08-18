@@ -1,0 +1,8 @@
+{"time_iso8601":"2026-08-15T11:00:00+00:00","remote_addr":"203.0.113.50","request_method":"GET","request_uri":"/products?id=1%27%20OR%20%271%27%3D%271","status":200,"http_user_agent":"sqlmap/1.7","rule_id":"942100"}
+{"time_iso8601":"2026-08-15T11:00:04+00:00","remote_addr":"203.0.113.50","request_method":"GET","request_uri":"/products?id=1%20UNION%20SELECT%20username%2Cpassword%20FROM%20users--","status":200,"rule_id":"942100"}
+{"time_iso8601":"2026-08-15T11:00:09+00:00","remote_addr":"203.0.113.50","request_method":"POST","request_uri":"/login","request_body":"user=admin%27--&pw=x","status":403,"rule_id":"942110","blocked":true}
+{"time_iso8601":"2026-08-15T11:00:13+00:00","remote_addr":"203.0.113.50","request_method":"GET","request_uri":"/report?year=2026%3B%20DROP%20TABLE%20invoices","status":500,"rule_id":"942190"}
+{"time_iso8601":"2026-08-15T11:00:18+00:00","remote_addr":"203.0.113.50","request_method":"GET","request_uri":"/search?q=x%27%20AND%20SLEEP%285%29--","status":200,"rule_id":"942160"}
+{"time_iso8601":"2026-08-15T11:00:22+00:00","remote_addr":"203.0.113.50","request_method":"GET","request_uri":"/products?id=1%20UNION%2F%2A%2A%2FSELECT%20null%2Cversion%28%29","status":200,"rule_id":"942100"}
+{"time_iso8601":"2026-08-15T11:00:27+00:00","remote_addr":"203.0.113.51","request_method":"GET","request_uri":"/api/items?filter=name%20LIKE%20%27%25a%25%27%20OR%201%3D1","status":200,"rule_id":"942100"}
+{"time_iso8601":"2026-08-15T11:00:31+00:00","remote_addr":"203.0.113.51","request_method":"GET","request_uri":"/admin?tbl=x%27%20UNION%20SELECT%20table_name%20FROM%20information_schema.tables--","status":403,"blocked":true}
