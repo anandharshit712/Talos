@@ -31,7 +31,10 @@ import httpx
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from talos.core.settings import TalosSettings  # noqa: E402 - path set up immediately above
+from talos.core.settings import (  # noqa: E402 - path set up immediately above
+    TalosSettings,
+    load_env_file,
+)
 
 #: Small enough to cost nothing, long enough to prove the model generates.
 PROBE_MESSAGES = [{"role": "user", "content": "Reply with the single word: ok"}]
@@ -55,18 +58,6 @@ class Result:
     ok: bool
     detail: str
     latency_ms: int
-
-
-def load_dotenv(path: Path) -> None:
-    """Load ``.env`` into the environment without overwriting what is already set."""
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        name, _, value = line.partition("=")
-        os.environ.setdefault(name.strip(), value.strip().strip('"').strip("'"))
 
 
 def probes_from(settings: TalosSettings, primary_only: bool) -> list[Probe]:
@@ -178,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config-dir", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    load_dotenv(REPO_ROOT / ".env")
+    load_env_file(REPO_ROOT / ".env")
     settings = TalosSettings.load(config_dir=args.config_dir)
     if not settings.routing:
         print("no routing table configured", file=sys.stderr)

@@ -6,7 +6,7 @@ signal that separates honeypot background radiation from an initial-access event
 both the confidence floor and the report's severity.
 
 **The detection is statistical; the model only narrates it.** The threshold decides, and the
-narrative model turns the resulting ``RateSignal`` into readable prose. With no model reachable
+narrative model turns the resulting ``RateSignal`` into readable prose. With no model in play
 the detector emits a templated narrative and ``used_llm=False`` -- a fully supported mode, not a
 degraded one. Nothing a model says can change ``attack_detected`` or the attempt count.
 """
@@ -93,7 +93,7 @@ class SshBruteForceDetector(Detector):
                 if outcome is not None
                 else ModelInfo(
                     name=MODEL_NAME_NONE,
-                    route_reason="statistical detection, no model reachable",
+                    route_reason="statistical detection, no model used",
                     used_llm=False,
                 )
             ),

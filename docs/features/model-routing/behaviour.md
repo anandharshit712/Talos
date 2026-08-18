@@ -17,6 +17,7 @@ attempted. One key configured is a supported setup, not a broken one.
 
 | Setting | Default | Effect |
 |---|---|---|
+| `talos.llm.enabled` | `true` | `false` skips every provider even with keys present — the deliberate way to run the statistical path |
 | `talos.llm.request_timeout_seconds` | 20.0 | Per HTTP attempt |
 | `talos.llm.max_retries` | 1 | Retries on timeout, 5xx, and 429 only |
 | `talos.llm.max_payload_chars` | 2000 | Attacker-controlled text is truncated to this before prompting |
@@ -55,6 +56,7 @@ section carries only values Talos computed: counts, window length, threshold, ou
 | Failure | Behaviour |
 |---|---|
 | No provider key set | Router has no clients; every call returns `None`; templated narrative, `used_llm=false` |
+| `talos.llm.enabled: false` | Same, by choice rather than by omission. Set it instead of deleting keys |
 | Component has no route | `None` |
 | Timeout or 5xx | One retry, then the fallback provider |
 | 429 | Retried — a rate limit is temporary |

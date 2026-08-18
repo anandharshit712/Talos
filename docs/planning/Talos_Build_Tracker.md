@@ -441,6 +441,30 @@ DVWA, and PortSwigger captures.
 - [x] **`infer_target_table` read the matched fragment**, which by construction cannot contain the
       table name following `UNION SELECT`.
 
+## Between P4 and P5 — configuration surface (2026-08-18)
+
+Raised by the owner: `.env` held three API keys and nothing else. Investigating it found a defect.
+
+- [x] `talos.llm.enabled` added (default `true`). `false` builds a router with no clients, so the
+      statistical path is reachable deliberately instead of by deleting secrets
+- [x] `.env.example` rewritten as a reference: every variable, its permitted values, its default,
+      and the `TALOS_<SECTION>__<KEY>` nesting that already worked but was documented nowhere
+- [x] A test walks `.env.example` and asserts each documented name resolves to a real settings
+      field holding the stated default — hand-written reference docs rot otherwise
+- [x] **Defect found: `.env` was never loaded.** Provider keys are not settings fields (so nothing
+      can log one), which also means pydantic's `env_file` never read them — and no entry point
+      read the file either. `talos scan` had run with three keys on disk and zero providers since
+      P3. The P3 live gate passed only because those keys were exported in that shell.
+      `load_env_file()` now runs at every entry point; the real environment still wins
+- [x] `check_model_availability.py`'s private copy of the loader deleted; `python-dotenv` declared
+      as a first-order dependency rather than relied on transitively
+- [x] Verified live: enabled → providers `["groq", "mistral", "nim"]`, narratives model-written;
+      `TALOS_LLM__ENABLED=false` → same two incidents, same confidences (0.70 / 0.90), templated
+      narratives, `used_llm=false`
+- [x] LLD rev 1.8 §16.8; 509 tests green
+
+---
+
 ## P5 — Auth Failure + RDP · D10–D11 (Aug 27–28)
 
 **Goal:** three detectors in two days by reusing `rate_engine.py` and the web plumbing — the evidence
@@ -625,6 +649,7 @@ stores plus a live API.
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-08-17 | Initial tracker: dashboard, per-phase/per-section checklists for P0–P9, cut order, open items. P0 and P1 recorded as done. |
+| 1.6 | 2026-08-18 | The LLM off switch, the documented `.env.example`, and the defect that review exposed: provider keys on disk were never loaded. |
 | 1.5 | 2026-08-18 | P4 recorded as done with measured precision/recall, the four defects found while building, and the honest reading of a 28-line corpus. |
 | 1.4 | 2026-08-18 | Code brought up to the 1.3 decisions: async store Protocols, dead provider settings removed, migration-set checking extended ahead of P6. Three storage limits added to open items. |
 | 1.3 | 2026-08-18 | Storage engine decided: PostgreSQL from P6, with P6.0 added as the migration section and a gate row for it. "Prototype scope" defined as breadth-only. Three storage limits added to open items. |

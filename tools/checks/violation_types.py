@@ -43,6 +43,10 @@ EXCLUDED_DIR_NAMES = frozenset(
         ".impeccable",
         "dist",
         "build",
+        # config/default.yaml -> talos.output.report_dir. Git-ignored runtime output, but the
+        # checkers walk the working tree rather than the index, so a developer who ran a scan
+        # before running the checks got three R1/R2 violations for their own results.
+        "out",
         "htmlcov",
         ".eggs",
     }

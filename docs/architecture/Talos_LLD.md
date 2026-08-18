@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.7 (2026-08-18) — see §16
+**Revision:** 1.8 (2026-08-18) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
 **Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the current slice (Web + Network) — a limit on breadth only, see HLD §1.5. Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
@@ -620,6 +620,7 @@ talos:
   classifier:
     min_confidence_floor: 0.35
   llm:                      # resilience + prompt hardening (§8.3)
+    enabled: true           # false -> no clients built; every call returns None (§16.8)
     request_timeout_seconds: 20.0
     max_retries: 1
     fallback_confidence_penalty: 0.85
@@ -850,6 +851,14 @@ until P6.0 ports them (HLD §7.1 stages SQLite through P5), and `asyncpg` is not
 | New XSS rule `unlisted_handler_in_tag` | §7.2 | Every other XSS rule is decisive or noise, which made the judge tier unreachable. A handler-shaped attribute with an unknown name is the genuine borderline case. |
 | Stored-vs-reflected keyed on a path-independent signature | §7.2 | The same payload arrives at one endpoint and renders at another; a signature including the endpoint could never match twice. Best-effort within the event window, and documented as such. |
 | Parser decodes exactly once — enforced | §5.2 | `parse_qsl` already decodes; an extra pass turned `%2527` into `'`, the precise evasion §5.2 forbids. A test pins the boundary. |
+
+### 16.8 Revision 1.8 — the LLM off switch, and the keys that never loaded (2026-08-18)
+
+| Change | Where | Why |
+|---|---|---|
+| **New `talos.llm.enabled`** | §10 | The design says the statistical path is a supported mode, not a degraded one, but the only way to reach it was deleting every API key. Secrets are a bad switch: removing them is not reversible in a shell, not visible in a config diff, and not something to do on a demo machine. `false` builds a router with no clients, so `complete_for` returns `None` everywhere and detectors take the fallback they already have. |
+| **Entry points load `.env`** | §8.1, §10 | Provider keys are deliberately not settings fields, so pydantic's `env_file` never saw them and nothing else read the file: the CLI ran for three phases with three keys on disk and no providers, reporting `used_llm=false` as if that were the operator's choice. `load_env_file()` now runs at every entry point, with the real environment winning over the file. Library code must not call it — a function that rewrites the process environment is not one a detector should reach. |
+| Environment overrides documented, not added | §10 | `TALOS_<SECTION>__<KEY>` already reached the whole config tree through pydantic's nested delimiter; nothing was missing but the reference. `.env.example` now lists every knob with its permitted values, and a test asserts each documented name resolves to a real field with the stated default, so the reference cannot rot. |
 
 ---
 *End of LLD.*

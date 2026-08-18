@@ -1,5 +1,27 @@
 # Changelog — Model Routing
 
+## 2026-08-18 — an off switch for the model layer
+
+- Added `talos.llm.enabled` (default `true`). `false` makes `build_router` skip every provider
+  even when keys are present, so every `complete_for` returns `None` and the pipeline runs the
+  statistical path it already had. Previously the only way to reach that path was deleting the
+  API keys — an irreversible, invisible way to change behaviour.
+- `.env.example` rewritten as a reference: every environment variable, its permitted values, and
+  its default, including the `TALOS_<SECTION>__<KEY>` nesting that already reached the whole
+  config tree but was documented nowhere.
+- A test walks `.env.example` and asserts every documented variable resolves to a real settings
+  field holding the stated default, so the reference cannot drift from the code.
+- **Fixed: `.env` was never loaded.** Provider keys are not settings fields, by design, so
+  pydantic's `env_file` never read them and no entry point read the file either. `talos scan` had
+  been running with three keys on disk and zero providers since P3, reporting `used_llm=false`
+  with no indication anything was wrong — the P3 live gate passed only because the keys were
+  exported into that shell. `load_env_file()` now runs in `main()`, real environment variables
+  still win, and a test asserts the call site exists. Verified live: providers
+  `["groq", "mistral", "nim"]`, narratives model-written.
+- `check_model_availability.py`'s private copy of the loader deleted in favour of the shared one.
+- `route_reason` for the no-model path reads "no model used" rather than "no model reachable",
+  which was false whenever the model was switched off deliberately.
+
 ## 2026-08-18 — the LLM layer (P3)
 
 - Added `OpenAiCompatibleClient` (`llm/model_client.py`): one client for NIM, Groq, and Mistral,

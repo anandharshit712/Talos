@@ -33,6 +33,11 @@ class TestExclusions:
     def test_known_caches_are_excluded(self, name: str) -> None:
         assert is_excluded_dir(name)
 
+    def test_the_report_sink_directory_is_excluded(self) -> None:
+        """`out/` is where the json_file sink writes. Running a scan before running the checks
+        used to fail R1 and R2 on the operator's own output."""
+        assert is_excluded_dir("out")
+
     def test_egg_info_suffix_is_excluded(self) -> None:
         assert is_excluded_dir("talos.egg-info")
 

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from apply_migrations import apply_pending
 
+from talos.cli import main_cli
 from talos.cli.main_cli import build_sinks, main
 from talos.core.settings import TalosSettings
 
@@ -74,3 +75,19 @@ def test_pretty_flag_reaches_the_stdout_sink(talos_settings: TalosSettings) -> N
     talos_settings.output.sinks = ["stdout"]
     sink = build_sinks(talos_settings, pretty=True)[0]
     assert sink._indent == 2
+
+
+def test_scan_loads_the_env_file_before_building_the_router(
+    scan_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Provider keys live in .env and are not settings fields, so the CLI is what loads them.
+
+    Regression: for three phases the CLI read no .env at all, so a developer with keys on disk
+    silently got templated narratives and had no way to tell.
+    """
+    calls: list[object] = []
+    monkeypatch.setattr(main_cli, "load_env_file", lambda *a: calls.append(a) or [])
+
+    main(["scan", str(SSH_LOG), "--db", str(scan_env), "--year", "2026"])
+
+    assert calls, "the CLI ran without loading .env"

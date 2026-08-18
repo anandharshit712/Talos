@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
+from dotenv import dotenv_values, load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -36,6 +37,7 @@ from talos.core.error_types import ConfigError
 _log = logging.getLogger(__name__)
 
 #: Environment overrides for *where* config lives, read before any settings object exists.
+ENV_FILE = ".env"
 CONFIG_DIR_ENV = "TALOS_CONFIG_DIR"
 CONFIG_PATH_ENV = "TALOS_CONFIG_PATH"
 
@@ -162,6 +164,10 @@ class AggregationSettings(_Block):
 class LlmSettings(_Block):
     """Resilience and prompt-hardening knobs (LLD 8.3, HLD 11/13)."""
 
+    enabled: bool = True
+    """Master switch. ``false`` builds a router with no clients, so every call returns ``None``
+    and the whole pipeline runs its statistical path -- a supported mode, not a degraded one."""
+
     request_timeout_seconds: float = Field(default=20.0, gt=0)
     max_retries: int = Field(default=1, ge=0)
     fallback_confidence_penalty: float = Field(default=0.85, gt=0.0, le=1.0)
@@ -202,9 +208,14 @@ class ModelRoute(_Block):
 # ---------------------------------------------------------------------------
 
 
+def repository_root() -> Path:
+    """The repository root, located relative to this module (``src/talos/core/``)."""
+    return Path(__file__).resolve().parents[3]
+
+
 def default_config_dir() -> Path:
     """The repository's ``config/`` directory, located relative to this module."""
-    return Path(__file__).resolve().parents[3] / "config"
+    return repository_root() / "config"
 
 
 def _deep_merge(base: dict[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
@@ -237,6 +248,25 @@ def _read_config_file(path: Path) -> dict[str, Any]:
     if not isinstance(body, dict):
         raise ConfigError(f"{path}: '{ROOT_KEY}:' must contain a mapping")
     return body
+
+
+def load_env_file(path: Path | None = None) -> list[str]:
+    """Read ``.env`` into ``os.environ`` and return the names it set, never the values.
+
+    Provider keys are deliberately not settings fields (nothing that can log a credential),
+    so pydantic's ``env_file`` never sees them -- only an entry point loading the file does.
+    Called by every entry point; never by library code, because a function that quietly
+    rewrites the process environment is not one a detector should be able to reach.
+
+    Real environment variables win: ``override=False``. A value already exported is a
+    deliberate choice, and a stale ``.env`` should not undo it.
+    """
+    target = path or repository_root() / ENV_FILE
+    if not target.is_file():
+        return []
+    names = [name for name, value in dotenv_values(target).items() if value]
+    load_dotenv(target, override=False)
+    return sorted(names)
 
 
 def _env_path(name: str) -> Path | None:

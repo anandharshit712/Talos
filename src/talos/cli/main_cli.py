@@ -29,7 +29,7 @@ from typing import Any
 from talos.core.agent_contracts import DetectionContext
 from talos.core.error_types import TalosError
 from talos.core.logging_setup import configure_logging
-from talos.core.settings import TalosSettings
+from talos.core.settings import TalosSettings, load_env_file
 from talos.domains.network.network_domain_agent import NetworkDomainAgent
 from talos.domains.web.web_domain_agent import WebDomainAgent
 from talos.ingestion.parser_contract import BaseParser
@@ -174,6 +174,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Provider keys live in .env and are not settings fields, so nothing loads them unless an
+    # entry point does. Before this call the CLI ran with three keys on disk and no providers.
+    load_env_file()
     args = build_parser().parse_args(argv)
     try:
         exit_code: int = args.handler(args)

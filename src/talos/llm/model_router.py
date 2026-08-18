@@ -133,9 +133,14 @@ def build_router(settings: TalosSettings) -> ModelRouter:
     """Build a router with a client for every provider whose key is present.
 
     A provider without its key is simply absent, so an operator with one key gets that provider
-    and templated narratives everywhere else, rather than a stack trace.
+    and templated narratives everywhere else, rather than a stack trace. ``talos.llm.enabled:
+    false`` skips every provider, which is how the statistical path is exercised deliberately
+    rather than by unsetting secrets.
     """
     clients: dict[str, ModelClient] = {}
+    if not settings.llm.enabled:
+        _log.info("llm disabled by configuration, statistical path only")
+        return ModelRouter(settings, clients)
     for name, profile in settings.providers.items():
         key = os.environ.get(profile.api_key_env, "").strip()
         if not key:

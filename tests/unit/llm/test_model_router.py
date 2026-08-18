@@ -150,3 +150,26 @@ def test_build_router_ignores_a_blank_key(
 ) -> None:
     monkeypatch.setenv(settings.providers["nim"].api_key_env, "   ")
     assert "nim" not in build_router(settings).providers
+
+
+def test_llm_disabled_yields_no_providers_even_with_keys(
+    settings: TalosSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The off switch beats a present key -- otherwise it is not an off switch."""
+    for profile in settings.providers.values():
+        monkeypatch.setenv(profile.api_key_env, "a-key")
+    assert build_router(settings).providers != []
+
+    settings.llm.enabled = False
+    assert build_router(settings).providers == []
+
+
+def test_disabled_router_returns_none_rather_than_raising(
+    settings: TalosSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Detectors read None as 'no model reachable', which is their tested fallback path."""
+    monkeypatch.setenv(settings.providers["nim"].api_key_env, "a-key")
+    settings.llm.enabled = False
+    router = build_router(settings)
+    component = next(iter(settings.routing))
+    assert asyncio.run(router.complete_for(component, prompt="p", schema=SCHEMA)) is None

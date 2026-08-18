@@ -6,13 +6,15 @@ overlay, then the environment, each beating the one below while leaving untouche
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from pathlib import Path
 
 import pytest
 
 from talos.core.error_types import ConfigError
-from talos.core.settings import TalosSettings, default_config_dir
+from talos.core.settings import TalosSettings, default_config_dir, load_env_file
 
 BASE_YAML = """
 talos:
@@ -83,6 +85,90 @@ def test_environment_beats_the_overlay(tmp_path: Path, monkeypatch: pytest.Monke
     settings = TalosSettings.load(config_dir=directory)
     assert settings.detection.ssh_brute_force.fail_threshold == 2
     assert settings.detection.ssh_brute_force.window_seconds == 120
+
+
+def test_env_file_loads_keys_without_overriding_the_shell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Provider keys are not settings fields, so this is the only thing that puts them in the
+    environment. A value already exported is a deliberate choice and must survive."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "# a comment",
+                "TALOS_NIM_API_KEY=from-file",
+                "TALOS_GROQ_API_KEY=also-from-file",
+                "TALOS_MISTRAL_API_KEY=",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TALOS_NIM_API_KEY", "from-shell")
+
+    loaded = load_env_file(env_file)
+
+    assert loaded == ["TALOS_GROQ_API_KEY", "TALOS_NIM_API_KEY"], "blank values are not keys"
+    assert os.environ["TALOS_NIM_API_KEY"] == "from-shell", "the shell wins"
+    assert os.environ["TALOS_GROQ_API_KEY"] == "also-from-file"
+    assert "from-file" not in str(loaded), "names are returned, never values"
+
+
+def test_missing_env_file_is_not_an_error(tmp_path: Path) -> None:
+    assert load_env_file(tmp_path / "absent") == []
+
+
+def test_env_example_documents_only_real_settings(tmp_path: Path) -> None:
+    """.env.example lists ~20 variables and their defaults by hand. Hand-written reference
+    documentation rots silently; this is the only thing that stops it."""
+    example = Path(__file__).resolve().parents[3] / ".env.example"
+    pattern = re.compile(r"^#?\s*(TALOS_[A-Z0-9_]+)=(.*)$", re.MULTILINE)
+    documented = pattern.findall(example.read_text(encoding="utf-8"))
+    assert len(documented) > 15, "the reference section vanished"
+
+    # Keys and loader inputs are read from os.environ directly, not through a settings field.
+    not_fields = {
+        "TALOS_NIM_API_KEY",
+        "TALOS_GROQ_API_KEY",
+        "TALOS_MISTRAL_API_KEY",
+        "TALOS_CONFIG_DIR",
+        "TALOS_CONFIG_PATH",
+    }
+    settings = TalosSettings.load(config_dir=default_config_dir(), overlay=tmp_path / "absent.yaml")
+
+    for name, shown in documented:
+        if name in not_fields:
+            continue
+        value: object = settings
+        for part in name.removeprefix("TALOS_").lower().split("__"):
+            value = value[part] if isinstance(value, dict) else getattr(value, part, _MISSING)
+            assert value is not _MISSING, f"{name} names no setting"
+        assert _same_value(shown.strip(), value), f"{name} documents {shown!r}, actual {value!r}"
+
+
+_MISSING = object()
+
+
+def _same_value(shown: str, actual: object) -> bool:
+    if isinstance(actual, Path):
+        return Path(shown) == actual
+    try:
+        return json.loads(shown) == actual
+    except ValueError:
+        return shown == str(actual)
+
+
+def test_llm_switches_off_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """.env.example documents TALOS_LLM__ENABLED=false; this is the assertion behind that line."""
+    directory = _config_dir(tmp_path)
+    assert TalosSettings.load(config_dir=directory).llm.enabled is True
+
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
+    settings = TalosSettings.load(config_dir=directory)
+    assert settings.llm.enabled is False
+    assert settings.llm.max_payload_chars == 2000
 
 
 def test_settings_cannot_hold_a_credential(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

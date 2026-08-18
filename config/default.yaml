@@ -39,6 +39,10 @@ talos:
     event_window_max_events: 2000
 
   llm:
+    # Master switch. false makes every model call return None, so detectors narrate from
+    # templates and every verdict carries used_llm=false. That path is tested and supported --
+    # set this rather than deleting API keys when you want to see it.
+    enabled: true
     request_timeout_seconds: 20.0
     # One retry on timeout/5xx, then the configured fallback model (LLD 8.3).
     max_retries: 1
