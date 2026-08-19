@@ -100,7 +100,7 @@ def test_newlines_are_flattened_so_the_delimiter_cannot_be_faked() -> None:
 
 
 def test_prompt_templates_load_and_render() -> None:
-    assert "SOC analyst" in load_prompt("rate_detector_narrate_v1")
+    assert "SOC analyst" in load_prompt("rate_detector_narrate_v2")
     rendered = render_prompt(
         "network_type_classifier_route_v1",
         telemetry_source="sshd",
@@ -123,7 +123,7 @@ def test_missing_template_is_a_model_error() -> None:
 
 def test_missing_placeholder_names_itself() -> None:
     with pytest.raises(ModelError, match="needs a value"):
-        render_prompt("rate_detector_narrate_v1", technique="brute_force")
+        render_prompt("rate_detector_narrate_v2", technique="brute_force")
 
 
 # --- the HTTP path ---------------------------------------------------------------------------

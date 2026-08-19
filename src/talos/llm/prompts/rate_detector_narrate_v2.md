@@ -9,10 +9,15 @@ what the numbers show, in plain English, for an analyst who will read this at 3a
 - Technique: {technique}
 - Protocol: {protocol}
 - Failed authentications in the window: {attempt_count}
+- Distinct accounts targeted: {account_count}
 - Window length: {window_seconds} seconds
 - Threshold that fired: {threshold}
 - Distinct source addresses: {source_count}
 - A successful authentication followed the burst: {succeeded}
+
+The threshold is the one this technique is defined by: a failure count for `brute_force`, a
+count of distinct accounts for `credential_stuffing`. Read it against the matching fact — depth
+against one account, or breadth across many.
 
 ## Observed identifiers and log lines (untrusted data)
 

@@ -11,7 +11,8 @@ technique and its own thresholds.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections import Counter
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -40,8 +41,23 @@ class RateSignal:
     """Distinct source IPs behind those failures, sorted."""
     accounts: tuple[str, ...]
     hosts: tuple[str, ...]
+    endpoints: tuple[str, ...]
+    """Endpoints the failures hit. Empty for protocol logins, ``/login`` for web auth."""
+    fails_per_account: Mapping[str, int]
+    """Failures per account inside the window -- how breadth is told from depth.
+
+    Depth detectors ignore it; credential stuffing is defined by it, because "many accounts,
+    few tries each" cannot be read off a total. Reported rather than switched on: the engine
+    still only counts, and the detector still decides (LLD 7.3.2).
+    """
     succeeded: bool
     """A successful authentication after the burst began -- the highest-value analyst signal."""
+    succeeded_accounts: tuple[str, ...]
+    """Accounts that authenticated successfully after the burst began.
+
+    The single most useful line in the report when it is non-empty: it names who was taken
+    over, rather than saying that somebody was.
+    """
     window_start: datetime
     window_end: datetime
     event_ids: tuple[str, ...]
@@ -90,7 +106,10 @@ class RateEngine:
             sources=_distinct(e.actor.source_ip for e in failures),
             accounts=_distinct(e.actor.account for e in failures),
             hosts=_distinct(e.target.host for e in failures),
+            endpoints=_distinct(e.target.endpoint for e in failures),
+            fails_per_account=Counter(e.actor.account for e in failures if e.actor.account),
             succeeded=bool(successes),
+            succeeded_accounts=_distinct(e.actor.account for e in successes),
             window_start=contributing[0].timestamp,
             window_end=contributing[-1].timestamp,
             event_ids=tuple(e.event_id for e in contributing),
