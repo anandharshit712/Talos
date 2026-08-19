@@ -65,3 +65,25 @@ all passing. End to end against the fixture: **2 incidents** — the threshold c
 
 Measured precision/recall against a labelled corpus is P8 work; the numbers above are behavioural,
 not statistical.
+
+## RDP (P5)
+
+| File | Covers |
+|---|---|
+| `tests/unit/domains/network/brute_force/test_rdp_brute_force_detector.py` | verdict shape, threshold edge, the SSH-telemetry filter, trailing success, model path |
+| `tests/unit/ingestion/parsers/test_network_log_parser.py` | event-id and logon-type filters, `SubStatus` naming, Winlogbeat field names, unusable events, a file mixing both formats |
+| `tests/e2e/test_rdp_brute_force_pipeline.py` | log file → `IncidentReport`, every layer real |
+
+Asserted explicitly, because both detectors share the `(host, account)` key and only the protocol
+filter separates them: an SSH burst produces **no** RDP verdict, an RDP burst produces **no** SSH
+verdict, and the e2e report's detector set is exactly `{rdp_brute_force_detector}`.
+
+`tests/fixtures/logs/network_rdp_brute_force_security.log` — 15 lines: ten 4625s with
+`LogonType` 10 against `administrator` from `198.51.100.23`, a trailing 4624 for the same account,
+and noise a real export carries (a 4672 privileged logon, a 4625 with `LogonType` 3 for a
+different account, a 4634 logoff, and a stray syslog line from another collector). The e2e test
+asserts the type-3 account never appears anywhere in the report.
+
+RDP fixtures are built by writing the JSON and reading it back through `NetworkLogParser`
+(`make_rdp_event_impl` in `tests/conftest.py`), so a fixture cannot map event ids to outcomes
+differently from the parser that does it in production.

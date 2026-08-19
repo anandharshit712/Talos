@@ -50,3 +50,27 @@ total: `scanned <file>: 15 event(s), 5 line(s) skipped, 2 incident(s)`.
 
 A silently-zero event count with a high skip count is the signal that the log format is not one
 this parser knows — which is a real answer, not a crash.
+
+## RDP event logs (P5)
+
+A line starting with `{` is read as one exported Windows Security event; anything else goes to the
+`sshd` syslog path. One file may hold both.
+
+| Field (aliases) | Mapped to |
+|---|---|
+| `EventID` / `event_id` / `EventCode` | 4625 → `outcome="failure"`, 4624 → `"success"`, else skipped |
+| `LogonType` / `logon_type` | must be 10 (RemoteInteractive); 3 and 7 share the ids and are skipped |
+| `TargetUserName` / `target_user_name` / `user` | `actor.account` |
+| `IpAddress` / `ip_address` / `SourceNetworkAddress` | `actor.source_ip` |
+| `Computer` / `computer_name` / `Hostname` | `target.host`, with `port=3389` |
+| `TimeCreated` / `@timestamp` / `EventTime` | `timestamp` (ISO-8601, `Z` accepted) |
+| `SubStatus` / `Status` | `auth.reason`, named for six codes, generic otherwise; raw code kept in `meta` |
+| `WorkstationName` | `meta.workstation` |
+
+Ids and logon types are accepted as numbers or as strings, because real exports contain both.
+An event is skipped when the source is `-`, `127.0.0.1`, or `::1`, when no account is named, or
+when the timestamp is unreadable — a placeholder key would merge unrelated events into one window.
+
+**EVTX itself is not parsed.** That would need a third-party library and a Windows-only binary
+file; the collector shipping these logs has already converted them, and the JSON export is what
+`wevtutil`, Winlogbeat, and every EVTX-to-JSON tool emit.

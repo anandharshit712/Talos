@@ -1,5 +1,19 @@
 # Changelog — Network Log Ingestion
 
+## 2026-08-19 — RDP event logs (P5)
+
+- `NetworkLogParser` reads exported Windows Security events alongside `sshd` syslog, chosen
+  per line by whether it starts with `{`. One file may interleave both, and the e2e fixture
+  does.
+- Accepted: `EventID` 4625/4624 with `LogonType` 10 (RemoteInteractive). Types 3 and 7 share
+  those ids and are skipped — counting them as RDP would inflate a burst with unrelated
+  failures.
+- Field aliases cover both `wevtutil` (Windows names) and Winlogbeat (lower-cased) exports;
+  ids and logon types are accepted as numbers or strings, because real captures contain both.
+- `SubStatus` mapped to a named reason for the six codes worth naming, generic otherwise, with
+  the raw code kept in `meta` either way.
+- **EVTX is not parsed.** Reading the exporter's JSON avoids a third-party library and a
+  Windows-only binary format; the collector that ships these logs has already converted them.
 ## 2026-08-17 — sshd syslog ingestion (P2)
 
 - Added `BaseParser` (`ingestion/parser_contract.py`): `parse_line` / `parse_stream` and the

@@ -25,7 +25,7 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 | **P2** Walking skeleton | D3–D4 | Aug 20–21 | **done** | yes | yes |
 | **P3** LLM layer | D5–D6 | Aug 22–23 | **done** | yes | yes |
 | **P4** Web injection | D7–D9 | Aug 24–26 | **done** | yes | yes |
-| **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | not started | — | — |
+| **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | **done** | yes | — |
 | **P6** Broken access control | D12–D14 | Aug 29–31 | not started | — | — |
 | **P7** Output surface | D15 | Sep 1 | not started | — | — |
 | **P8** Evaluation & calibration | D16–D17 | Sep 2–3 | not started | — | — |
@@ -472,27 +472,73 @@ for the deliberate-reuse claim.
 
 ### P5.1 Detectors
 
-- [ ] `domains/web/auth_failure/auth_failure_sub_agent.py` (~70)
-- [ ] `domains/web/auth_failure/brute_force_detector.py` (~130)
-- [ ] `domains/web/auth_failure/credential_stuffing_detector.py` (~150) — `distributed=True`
-- [ ] `domains/network/brute_force/rdp_brute_force_detector.py` (~130)
-- [ ] `ingestion/parsers/network_log_parser.py` (+80) — RDP event logs
+- [x] `domains/web/auth_failure/auth_failure_sub_agent.py` (57)
+- [x] `domains/web/auth_failure/brute_force_detector.py` (100) — keyed per account
+- [x] `domains/web/auth_failure/credential_stuffing_detector.py` (127) — keyed per source; the
+      `distributed=True` flag was dropped for `RateSignal.fails_per_account` (LLD rev 1.9)
+- [x] `domains/network/brute_force/rdp_brute_force_detector.py` (94)
+- [x] `ingestion/parsers/network_log_parser.py` (+127) — Windows Security events, `LogonType` 10
+- [x] **Not in the plan, and required:** `detection/rate/rate_verdict_engine.py` (186) — the
+      shared curve/narration/`Verdict` assembly. `ssh_brute_force_detector.py` refactored onto it
+      (190 → 98); RDP then cost 94 lines instead of 190
+- [x] **Not in the plan, and required:** `ingestion/parsers/web_log_parser.py` (+80) — HTTP auth
+      derivation. See P5.5: without it both web detectors were unreachable
+- [x] `domains/web/web_type_classifier.py` — routes on `event.auth`, shares the parser's
+      `LOGIN_ENDPOINT`; its private copy of the pattern is gone
+- [x] `llm/prompts/rate_detector_narrate_v2.md` — replaces v1 (distinct-account fact)
 
 ### P5.2 Feature docs
 
-- [ ] `docs/features/web-auth-failure-detection/` with `sub-features/brute-force/` and
+- [x] `docs/features/web-auth-failure-detection/` with `sub-features/brute-force/` and
       `sub-features/credential-stuffing/`
-- [ ] RDP section added to `docs/features/network-brute-force-detection/` + changelog entry
+- [x] RDP section added to `docs/features/network-brute-force-detection/` + changelog entry
+- [x] `web-log-ingestion` and `network-log-ingestion` behaviour + changelog updated for the two
+      new parser paths
 
 ### P5.3 Tests — the discriminator is the point
 
-- [ ] Broad-and-shallow (30 accounts × 2 failures) fires credential stuffing, **not** brute force
-- [ ] Narrow-and-deep (1 account × 40 failures) fires brute force, **not** credential stuffing
-- [ ] RDP burst detected with `auth.protocol == "rdp"`
+- [x] Broad-and-shallow (30 accounts × 2 failures) fires credential stuffing, **not** brute force
+- [x] Narrow-and-deep (1 account × 40 failures) fires brute force, **not** credential stuffing
+- [x] RDP burst detected with `auth.protocol == "rdp"`; an SSH burst produces no RDP verdict and
+      the reverse
+- [x] Breadth **with** one deep account is rejected as stuffing — the condition that makes the
+      claim honest
+- [x] Both fire, one verdict each, when two genuine attacks come from two sources
+- [x] Every threshold has a test at its exact edge and one below it (the P4 unreachable-branch
+      lesson)
+- [x] `tests/e2e/test_web_credential_stuffing_pipeline.py`, `tests/e2e/test_rdp_brute_force_pipeline.py`
+      — log file to `IncidentReport`, every layer real, no model
 
-### P5.4 Gate
+### P5.4 Gate — **passed 2026-08-19**
 
-- [ ] All four rate-based detectors pass; the discrimination test is green in both directions
+- [x] All four rate-based detectors fire on their own corpus and stay silent on the others'
+- [x] The discrimination test is green in **both** directions, and asserts the negative each time
+- [x] Credential stuffing names the compromised account (`user013`) in the evidence, and the
+      incident leads with T1110.004
+- [x] RDP: 10 failed RemoteInteractive logons → one incident, severity `high` after the trailing
+      4624, type-3 noise never scoped in
+- [x] `used_llm=false` throughout; **zero model calls** in the entire suite
+- [x] `run_all_checks.py --strict`, ruff, mypy strict, **588 tests** — all green (509 before P5)
+
+### P5.5 Found while building
+
+- [x] **`WebLogParser` never populated `auth`.** Every web event since P4 carried `auth=None`, so
+      `brute_force_detector` and `credential_stuffing_detector` would have returned `None` on
+      every line of a real log and the phase would have "passed" on hand-built events. Found by
+      reading the parser before writing the detectors, not by a failing test — which is the
+      uncomfortable part: nothing in P4 could have caught it, because no P4 detector read `auth`.
+- [x] **`VerdictAggregator` sorted MITRE ids**, discarding the primary-first order `mitre_all`
+      documents. Credential stuffing is the first technique with two mappings, so its incidents
+      led with `T1110` instead of `T1110.004`. Caught by the e2e expectation file.
+- [x] **Three near-identical detectors were about to be written.** SSH was 190 lines, of which
+      three were the algorithm; RDP and web brute force would have been clones. The shared
+      assembly engine came out of that, and the SSH refactor is what proves it behaves identically
+      (its P2 tests were not touched).
+- [x] **A `distributed: bool` on `RateConfig`** (LLD §7.3's sketch) would have put a technique
+      decision inside the engine. Replaced with a reported per-account tally.
+- [x] **The classifier held a second login-endpoint regex.** With the parser deriving auth, the
+      duplicate is gone; the side effect is that `register` and `password` paths no longer route
+      to `auth_failure`, which is correct — they carry no authentication outcome.
 
 ---
 
@@ -618,6 +664,11 @@ stores plus a live API.
 1. [ ] RDP brute force detector (P5)
 2. [ ] Credential stuffing detector (P5)
 3. [ ] Stored-XSS event-window correlation (P4) — ship reflected-only, document the limitation
+4. [ ] **Rotated credential stuffing (P5)** — the window is keyed per source, so a run split
+   across many addresses with few accounts each is missed. The fix is a window keyed on
+   nothing at all *plus* a source-set heuristic, because a global window fires on fifteen
+   unrelated people mistyping passwords. **Trigger:** P8 measurement against a real capture
+   decides whether the false positives are affordable.
 4. [ ] FastAPI surface (P7)
 5. [ ] IDOR / broken access control (P6) — **last resort**
 
@@ -649,6 +700,7 @@ stores plus a live API.
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-08-17 | Initial tracker: dashboard, per-phase/per-section checklists for P0–P9, cut order, open items. P0 and P1 recorded as done. |
+| 1.7 | 2026-08-19 | P5 recorded as done: two web auth detectors, RDP, the shared verdict engine, and the five things building it exposed — including a web parser that had never populated `auth`. Rotated stuffing added to deferred items. |
 | 1.6 | 2026-08-18 | The LLM off switch, the documented `.env.example`, and the defect that review exposed: provider keys on disk were never loaded. |
 | 1.5 | 2026-08-18 | P4 recorded as done with measured precision/recall, the four defects found while building, and the honest reading of a 28-line corpus. |
 | 1.4 | 2026-08-18 | Code brought up to the 1.3 decisions: async store Protocols, dead provider settings removed, migration-set checking extended ahead of P6. Three storage limits added to open items. |

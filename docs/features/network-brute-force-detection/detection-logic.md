@@ -1,4 +1,4 @@
-# Detection Logic — SSH Brute Force
+# Detection Logic — SSH and RDP Brute Force
 
 **Technique:** `brute_force` · **MITRE:** T1110 (Brute Force, Credential Access) ·
 **OWASP:** A07:2021 Identification and Authentication Failures
@@ -18,6 +18,7 @@
 talos:
   detection:
     ssh_brute_force: { window_seconds: 120, fail_threshold: 8 }
+    rdp_brute_force: { window_seconds: 120, fail_threshold: 8 }
     rate_confidence: { base: 0.70, per_extra_attempt: 0.02, cap: 0.95, success_floor: 0.90 }
 ```
 
@@ -25,7 +26,9 @@ Nothing above appears as a literal in the detector; tuning is a config change (s
 
 ## Algorithm
 
-1. Ignore the event unless `auth.protocol == "ssh"`.
+1. Ignore the event unless `auth.protocol` is this detector's protocol — `ssh` or `rdp`. The
+   two detectors share the key function, so the filter is the only thing keeping each out of
+   the other's window.
 2. Key it as `host_account:<host>|<account>`; an event missing either is unkeyable and ignored.
 3. Read every event for that key within `window_seconds` of the newest one.
 4. Count failures. Below `fail_threshold` → return `None` (not a verdict of "benign", an
@@ -79,7 +82,32 @@ unconstructible.
 | Mode | Effect | Planned answer |
 |---|---|---|
 | Slow grind — 5 attempts/hour | Never crosses the window | Longer-window profile, post-slice |
-| Spray across many accounts, few tries each | Below threshold on every key | **Credential stuffing (P5)** — the breadth view over the same window |
+| Spray across many accounts, few tries each | Below threshold on every key | **Credential stuffing (P5, delivered)** — the breadth view over the same window, for HTTP logins |
 | Rotating source IPs against one account | Still fires: the key is `(host, account)`, not the IP | Already covered |
 | Success with no preceding failures | Not brute force by definition | Anomalous-login detection, out of slice |
 | Logs the parser cannot read | Silent | Skip counter is printed on every scan |
+
+## RDP specifics (P5)
+
+Same algorithm, same curve, same key. What differs:
+
+| Aspect | SSH | RDP |
+|---|---|---|
+| Telemetry | `sshd` syslog lines | exported Windows Security events, JSON per line |
+| Accepted | `Failed`/`Accepted password`, `Invalid user` | `EventID` 4625/4624 with `LogonType` 10 |
+| Failure reason | `invalid_password`, `unknown_user` | mapped from `SubStatus` — `unknown_user`, `invalid_password`, `account_disabled`, `account_locked`, `account_expired`, `workstation_restriction`, else `logon_failed` |
+| Port recorded | 22 | 3389 |
+| On success | probable initial access | probable initial access, and called out as a leading ransomware entry point in the narrative |
+
+**A locked account is named rather than folded into a generic failure.** `0xC0000234` after a
+burst is the sequence an analyst most wants to see, because it tells them the lockout policy
+worked and roughly when the attempt stopped.
+
+### RDP false-negative modes
+
+| Mode | Effect |
+|---|---|
+| RDP behind a gateway that rewrites the source | Every failure shares the gateway's address; still fires on `(host, account)`, but `source_diversity` is 1 and misleading |
+| `LogonType` 7 (unlock) brute force | Skipped by design — not a remote session; would need its own route |
+| An export that omits `IpAddress` | Skipped rather than keyed on a placeholder, so the burst is invisible |
+| NLA rejecting before Windows logs a 4625 | No event to count; a network-level detector's job, out of slice |

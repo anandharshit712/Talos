@@ -54,3 +54,29 @@ decodes twice:
 
 `parse_line` never raises. Unreadable lines increment `parse_errors`, which the CLI reports on
 every scan: `scanned <file>: 28 event(s), 3 line(s) skipped, 2 incident(s)`.
+
+## HTTP authentication outcomes (P5)
+
+`derive_http_auth(path, method, status)` maps a request line onto `AuthEvent(protocol="http")`.
+Login paths only — `login`, `signin`, `sign-in`, `auth`, `authenticate`, `session`, `token`,
+`oauth`.
+
+| Observed | Recorded | Why |
+|---|---|---|
+| `401` or `403`, any method | `failure` | a rejected credential, form or Basic/Bearer alike |
+| `POST`/`PUT`/`PATCH` → `2xx`/`3xx` | `success` | `302` back into the app is what a real login looks like |
+| `GET /login` → `200` | `None` | the form rendering; not an attempt |
+| `POST /login` → `200` | `success` | ambiguous in an access log — see below |
+| `POST /register` → `201` | `None` | a new account, not a login |
+| `403` on a non-login path | `None` | authorisation, not authentication (P6's territory) |
+
+**The account.** When the collector already resolved a user (`remote_user`, `user`, `username`),
+that name wins. Otherwise the submitted one is read from the query string or the body — form-encoded
+or JSON — through `parse_qsl`/`json.loads`, which each decode exactly once. `%2527` stays `%27`, as
+everywhere else in this parser. Only the account field is read; the password beside it is never
+copied into an event.
+
+**The one ambiguity, stated plainly.** Applications that answer a failed login with `200` and a
+re-rendered form are indistinguishable from a successful one in an access log. Reading `200` as a
+failure would invent an attack out of every sign-in on such an application, so it is read as a
+success; the cost is a missed burst there, and it needs response bodies or application logs to fix.

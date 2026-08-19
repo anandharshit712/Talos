@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.8 (2026-08-18) — see §16
+**Revision:** 1.9 (2026-08-19) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
 **Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the current slice (Web + Network) — a limit on breadth only, see HLD §1.5. Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
@@ -69,7 +69,8 @@ src/talos/
 │           └── rdp_brute_force_detector.py
 ├── detection/                         # shared, domain-agnostic detection cores
 │   ├── rate/
-│   │   └── rate_engine.py             # shared statistical core (web auth + network brute force)
+│   │   ├── rate_engine.py             # shared statistical core (web auth + network brute force)
+│   │   └── rate_verdict_engine.py     # shared curve/narration/Verdict assembly for all four
 │   ├── patterns/
 │   │   ├── pattern_engine.py           # shared payload extraction + matching + signal grades
 │   │   ├── sql_injection_pattern_rules.py
@@ -84,7 +85,7 @@ src/talos/
 │       ├── network_type_classifier_route_v1.md
 │       ├── sql_injection_detector_judge_v1.md
 │       ├── xss_detector_judge_v1.md
-│       ├── rate_detector_narrate_v1.md
+│       ├── rate_detector_narrate_v2.md
 │       └── deviation_scorer_judge_v1.md
 ├── knowledge/
 │   ├── mitre_mapping.py               # technique-id constants + tactic mapping
@@ -341,9 +342,11 @@ class BaseParser(ABC):
 - Supports combined/common Apache/Nginx log format and JSON app logs (format autodetected per line).
 - Field mapping: `remote_addr→actor.source_ip`, `request_line→request.method/path/query_params`, `status→request.status_code`, `http_user_agent→actor.user_agent`, body/headers when present (WAF JSON).
 - URL-decodes `query_params` and `body` **once** and preserves the raw form in `raw` (double-decode is an evasion vector — the detector, not the parser, decides how many layers to normalize).
+- **Derives `auth` for login requests** (`derive_http_auth`, P5): on login paths only, `401`/`403` → `outcome="failure"` for any method, and `POST`/`PUT`/`PATCH` answered `2xx`/`3xx` → `"success"`; everything else leaves `auth = None`. `GET /login → 200` is the form rendering and states no outcome; registration and password-reset paths sit outside the pattern, since a `201` from `POST /register` is a new account and would otherwise read as a trailing success on somebody else's burst. The submitted username fills `actor.account` when the collector resolved none, read through `parse_qsl`/`json.loads` — one decode, no second pass. `LOGIN_ENDPOINT` is defined here and imported by `WebTypeClassifier`, so routing and parsing cannot disagree about what a login is.
 
 ### 5.3 Network/Auth Log Parser — `ingestion/parsers/network_log_parser.py`
-- Parses `sshd` syslog lines and RDP event logs.
+- Parses `sshd` syslog lines and RDP event logs; the format is chosen per line (a leading `{` is an RDP event), so one file may interleave both.
+- **RDP is the exported Windows Security log, one JSON object per line** (P5) — what `wevtutil`, Winlogbeat, and every EVTX-to-JSON tool emit. `EventID` 4625/4624 → `outcome`, and **only** `LogonType` 10 (RemoteInteractive) is read as RDP: types 3 and 7 share those ids and counting them would inflate a burst with unrelated failures. `SubStatus` maps to a named `auth.reason` for six codes and a generic one otherwise, with the raw code kept in `meta`. EVTX itself is deliberately not parsed — that needs a third-party library and a Windows-only binary file, and the collector shipping these logs has already converted them.
 - Maps: source IP → `actor.source_ip`; targeted user → `actor.account`; `protocol ∈ {ssh, rdp}` → `auth.protocol`; "Accepted/Failed password" → `auth.outcome`; host/port → `target.host/port`.
 - Flow records populate `target` + `meta` for future port-scan/DDoS branches (not consumed by the built detector).
 
@@ -431,7 +434,6 @@ class RateConfig:
     window_seconds: int
     fail_threshold: int          # failures within window to fire
     key_fn: Callable             # what defines "one target" (account / host / ip)
-    distributed: bool = False    # credential-stuffing mode
 
 class RateEngine:
     def evaluate(self, event, window: EventWindowStore, cfg: RateConfig):
@@ -444,20 +446,36 @@ class RateEngine:
                             if e.timestamp >= min(f.timestamp for f in fails))
         return RateSignal(count=len(fails),
                           sources={e.actor.source_ip for e in fails},
-                          succeeded=success_after,
+                          accounts=..., hosts=..., endpoints=...,
+                          fails_per_account=Counter(e.actor.account for e in fails),
+                          succeeded=success_after, succeeded_accounts=...,
                           window=(recent[0].timestamp, recent[-1].timestamp))
 ```
 
+`RateSignal.fails_per_account` replaces the `distributed: bool` this sketch previously carried on
+`RateConfig` (revision 1.9). A mode flag would have made the engine decide something; reporting the
+per-account tally leaves the decision in the detector, the only party that knows the technique.
+`succeeded_accounts` names who authenticated after the burst began — the most useful line in a
+stuffing report.
+
+**Verdict assembly is shared too** — `detection/rate/rate_verdict_engine.py`. The four detectors
+differ in three things: the telemetry they accept, what they call the statistic they fired on, and
+how they word the fallback narrative. The confidence curve, the narration call, `Scope`, and
+`ModelInfo` were identical, so they live once in `assemble_rate_verdict(signal, spec, ctx,
+evidence, template_narrative)`, with `RateVerdictSpec` carrying the detector's identity plus
+`score_count` — whichever number the technique is defined by (failures for depth, distinct accounts
+for breadth).
+
 #### 7.3.1 Brute Force Detector (web) — `T1110` — `domains/web/auth_failure/brute_force_detector.py`
-`key_fn = (account)` OR `(source_ip)`; fires on high failures against a single account/source; scope reports `attempt_count`, `source_diversity`, targeted `account`, and `succeeded`. Confidence scales with count above threshold; a trailing success → confidence ≥ 0.9 and severity `high`.
+`key_fn = (account)` — **not** `(source_ip)`, settled in P5: the source key is credential stuffing's, and sharing it would report one attack twice under two techniques. Not `(host, account)` either, as SSH uses, because a web login is served by whichever app server the balancer picked. Fires on high failures against a single account; scope reports `attempt_count`, `source_diversity`, targeted `account`, and `succeeded`. Confidence scales with count above threshold; a trailing success → confidence ≥ 0.9 and severity `high`.
 
 #### 7.3.2 Credential Stuffing Detector — `T1110.004` — `domains/web/auth_failure/credential_stuffing_detector.py`
-`distributed=True`: fires on **low failures per account but across many accounts** from a rotating source set within the window. Scope reports distinct accounts targeted and any account with a success immediately following a failed batch attempt. Distinguished from brute force by breadth (many accounts, few tries each) vs depth (one account, many tries).
+Keyed on `(source_ip)`; fires on **low failures per account but across many accounts** within the window — both conditions required: at least `distinct_accounts` distinct accounts *and* no account past `fails_per_account_max`. The second is what makes the verdict a claim rather than a coincidence: without it, one account ground 200 times from one address satisfies "many failures from one source". Confidence is read from the account count, not the failure total. **A run rotated across many sources is a documented false negative** — a source-keyed window cannot see it, and an unkeyed global window fires on fifteen unrelated people mistyping passwords unless a source-set heuristic sits beside it; P8 decides that against a real capture. Scope reports distinct accounts targeted and any account with a success immediately following a failed batch attempt. Distinguished from brute force by breadth (many accounts, few tries each) vs depth (one account, many tries).
 
 #### 7.3.3 SSH / RDP Brute Force Detectors — `T1110` — `domains/network/brute_force/{ssh,rdp}_brute_force_detector.py`
 Same engine, `auth.protocol` filter (`ssh`/`rdp`), `key_fn=(target.host, account)`. `succeeded` (a successful auth following the failed burst) is the highest-value analyst signal — it separates honeypot noise from a genuine initial-access event. RDP is called out as a top ransomware initial-access vector.
 
-For all rate detectors, the small "narrative" model turns the `RateSignal` into `reasoning` (prompt: `llm/prompts/rate_detector_narrate_v1.md`); if the model is unavailable, a templated narrative is used and `used_llm=False`.
+For all rate detectors, the small "narrative" model turns the `RateSignal` into `reasoning` (prompt: `llm/prompts/rate_detector_narrate_v2.md`); if the model is unavailable, a templated narrative is used and `used_llm=False`.
 
 ### 7.4 IDOR — `category="broken_access_control"`, `technique="idor"`, MITRE `T1083`/`T1530`
 `domains/web/broken_access_control/` — sub-agent plus two cooperating children (`access_baseliner.py`, `deviation_scorer.py`); no fixed payload, so it needs learned baselines.
@@ -657,7 +675,7 @@ Principle: **fail-open for detection** (a broken detector must not silence the p
 
 ## 12. State, Concurrency, and Performance
 
-- **EventWindowStore** is an in-memory, TTL-bounded ring buffer keyed for O(1) recent-lookups by `(account)`, `(source_ip)`, `(host,account)`; evicts on TTL to bound memory (NFR-7).
+- **EventWindowStore** is an in-memory, TTL-bounded ring buffer keyed for O(1) recent-lookups by `(account)`, `(source_ip)`, `(host,account)`; evicts on TTL to bound memory (NFR-7). Those three keys are what let depth and breadth detectors read the same events without a second buffer: web brute force queries the account key, credential stuffing the source key, SSH and RDP the pair.
 - **BaselineStore** is read-mostly, write-on-event; a per-account lock guards baseline updates.
 - Orchestrator is `asyncio`-based; classifier/LLM calls are `await`ed concurrently across detectors of the same sub-agent.
 - Statistical detectors are pure/fast (sub-second); LLM narrative is generated lazily and can be deferred without blocking the verdict's detection decision.
@@ -859,6 +877,19 @@ until P6.0 ports them (HLD §7.1 stages SQLite through P5), and `asyncpg` is not
 | **New `talos.llm.enabled`** | §10 | The design says the statistical path is a supported mode, not a degraded one, but the only way to reach it was deleting every API key. Secrets are a bad switch: removing them is not reversible in a shell, not visible in a config diff, and not something to do on a demo machine. `false` builds a router with no clients, so `complete_for` returns `None` everywhere and detectors take the fallback they already have. |
 | **Entry points load `.env`** | §8.1, §10 | Provider keys are deliberately not settings fields, so pydantic's `env_file` never saw them and nothing else read the file: the CLI ran for three phases with three keys on disk and no providers, reporting `used_llm=false` as if that were the operator's choice. `load_env_file()` now runs at every entry point, with the real environment winning over the file. Library code must not call it — a function that rewrites the process environment is not one a detector should reach. |
 | Environment overrides documented, not added | §10 | `TALOS_<SECTION>__<KEY>` already reached the whole config tree through pydantic's nested delimiter; nothing was missing but the reference. `.env.example` now lists every knob with its permitted values, and a test asserts each documented name resolves to a real field with the stated default, so the reference cannot rot. |
+
+### 16.9 Revision 1.9 — auth failure and RDP, P5 (2026-08-19)
+
+| Change | Where | Why |
+|---|---|---|
+| **`RateConfig.distributed` dropped; `RateSignal` gains `fails_per_account`** | §7.3, §7.3.2 | Credential stuffing is defined by a *shape* — many accounts, few tries each — and a boolean mode on the config would have moved that judgement into the engine. The engine now reports the per-account tally (plus `endpoints` and `succeeded_accounts`) and the detector applies both conditions. The engine still only counts. |
+| **New `detection/rate/rate_verdict_engine.py`** | §2.1 tree, §7.3 | Four rate detectors had identical confidence-curve, narration, `Scope`, and `ModelInfo` code. Assembly is now one function plus a spec; `SshBruteForceDetector` was refactored onto it and lost 100 lines, and `rdp_brute_force_detector` cost 94 lines rather than 190. A change to the curve can no longer land in three detectors and miss the fourth. |
+| **`WebLogParser` derives HTTP `auth`** | §5.2 | `auth` was never populated for web events — a latent defect that would have left both P5 web detectors dead on arrival. The mapping is narrow, and its one ambiguity (`POST /login → 200`) is documented rather than guessed. |
+| **`WebTypeClassifier` routes on `event.auth`** | §6 | Symmetric with the network classifier, which already routed on `auth.protocol`, and one fewer copy of the login-endpoint pattern. Login paths with no outcome still route statically, so a benign login page never reaches the routing model. Registration and password-reset paths no longer route to `auth_failure`: they carry no authentication outcome. |
+| **`NetworkLogParser` reads exported Windows Security events** | §5.3 | RDP telemetry as JSON per line, `LogonType` 10 only. Reading the exporter's output rather than EVTX avoids a third-party library and a Windows-only binary format. |
+| **Brute force keyed per account; stuffing per source** | §7.3.1, §7.3.2 | §7.3.1 previously allowed either key. Choosing the source for both would have made one attack arrive as two verdicts under two techniques; per-account depth against per-source breadth is what keeps the detectors from colliding, and the P5 gate asserts both directions. |
+| **Prompt `rate_detector_narrate_v1` → `v2`** | §7.3, §9 | Adds the distinct-account fact and tells the model to read the threshold against the matching dimension. Without it a stuffing narrative describes a breadth finding as a failure count. All four detectors use it; v1 is deleted. |
+| **`VerdictAggregator` no longer sorts MITRE ids** | §7.4, §11 | `mitre_all` promises primary-first and the aggregator sorted by id, so credential stuffing — the first technique carrying two mappings — produced incidents leading with T1110 instead of T1110.004. Insertion order now, deterministic given a fixed detector registration order. |
 
 ---
 *End of LLD.*
