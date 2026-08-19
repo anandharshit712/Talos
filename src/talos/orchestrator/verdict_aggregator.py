@@ -144,12 +144,19 @@ class VerdictAggregator:
         return SEVERITIES[max(0, min(index, len(SEVERITIES) - 1))]
 
     def _techniques(self, verdicts: list[Verdict]) -> list[MitreMapping]:
-        """Every ATT&CK technique implied by the firing verdicts, de-duplicated, ordered."""
+        """Every ATT&CK technique implied by the firing verdicts, de-duplicated, primary first.
+
+        Insertion order, not sorted order. ``mitre_all`` returns a technique's mappings with the
+        most specific one first -- ``T1110.004`` before ``T1110`` for credential stuffing -- and
+        sorting by id reverses exactly that pair, so a report would lead with the generic parent
+        of the sub-technique it actually detected. Verdict order is deterministic (detectors are
+        registered in a fixed order and ``gather`` preserves it), so this is stable across runs.
+        """
         seen: dict[str, MitreMapping] = {}
         for verdict in verdicts:
             for mapping in mitre_all(verdict.technique):
                 seen.setdefault(mapping.technique_id, mapping)
-        return [seen[technique_id] for technique_id in sorted(seen)]
+        return list(seen.values())
 
     def _summary(self, leading: Verdict, scope: Scope) -> str:
         """One line an analyst can triage on without opening the verdicts."""
