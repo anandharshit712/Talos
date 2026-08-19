@@ -4,8 +4,8 @@ Identical in shape to the network agent, which is the point — the orchestrator
 domains, this knows only categories, and neither knows a technique. Registering the web agent is
 what makes the whole web branch reachable; nothing else changes.
 
-P4 registers the injection sub-agent. Auth failure arrives in P5 and broken access control in P6,
-each as one more entry in the same map.
+P4 registered the injection sub-agent and P5 auth failure; broken access control arrives in P6
+as one more entry in the same map.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import logging
 
 from talos.core.agent_contracts import AttackTypeSubAgent, DetectionContext, DomainAgent
 from talos.core.constants import CATEGORY_UNCLASSIFIED, DOMAIN_WEB
+from talos.domains.web.auth_failure.auth_failure_sub_agent import AuthFailureSubAgent
 from talos.domains.web.injection.injection_sub_agent import InjectionSubAgent
 from talos.domains.web.web_type_classifier import WebTypeClassifier
 from talos.schemas.event_schema import NormalizedEvent
@@ -34,8 +35,8 @@ class WebDomainAgent(DomainAgent):
     ) -> None:
         self.classifier = classifier or WebTypeClassifier()
         if sub_agents is None:
-            injection = InjectionSubAgent()
-            sub_agents = {injection.category: injection}
+            registered: list[AttackTypeSubAgent] = [InjectionSubAgent(), AuthFailureSubAgent()]
+            sub_agents = {sub_agent.category: sub_agent for sub_agent in registered}
         self.sub_agents = sub_agents
 
     async def process(self, event: NormalizedEvent, ctx: DetectionContext) -> list[Verdict]:
@@ -45,8 +46,8 @@ class WebDomainAgent(DomainAgent):
 
         sub_agent = self.sub_agents.get(category)
         if sub_agent is None:
-            # A category with no sub-agent yet is the normal state mid-build: auth_failure lands
-            # in P5, broken_access_control in P6. Log it at debug so it is visible without
+            # A category with no sub-agent yet is the normal state mid-build:
+            # broken_access_control lands in P6. Log it at debug so it is visible without
             # pretending a wiring bug.
             _log.debug(
                 "no sub-agent registered for category yet",

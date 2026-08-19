@@ -61,4 +61,4 @@ def test_a_raising_sub_agent_is_contained(
 def test_the_agent_knows_its_domain_and_nothing_about_techniques() -> None:
     agent = WebDomainAgent()
     assert agent.domain == "web"
-    assert set(agent.sub_agents) == {"injection"}
+    assert set(agent.sub_agents) == {"injection", "auth_failure"}

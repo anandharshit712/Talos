@@ -1,0 +1,15 @@
+{"EventID": 4672, "TimeCreated": "2026-08-15T10:14:00Z", "Computer": "jump-01", "TargetUserName": "SYSTEM", "IpAddress": "-", "LogonType": 5}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:14:15Z", "Computer": "jump-01", "TargetUserName": "svc_sql", "IpAddress": "10.0.0.14", "LogonType": 3, "SubStatus": "0xC000006A"}
+Aug 15 10:14:31 jump-01 sshd[4101]: Server listening on 0.0.0.0 port 22.
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:00Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC0000064", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:06Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC000006A", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:12Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC000006A", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:18Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC0000064", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:24Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC000006A", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:30Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC000006A", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:36Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC0000064", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:42Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC000006A", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:48Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC000006A", "WorkstationName": "KALI"}
+{"EventID": 4625, "TimeCreated": "2026-08-15T10:15:54Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0xC0000064", "WorkstationName": "KALI"}
+{"EventID": 4624, "TimeCreated": "2026-08-15T10:16:06Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10, "SubStatus": "0x0", "WorkstationName": "KALI"}
+{"EventID": 4634, "TimeCreated": "2026-08-15T10:18:20Z", "Computer": "jump-01", "TargetUserName": "administrator", "IpAddress": "198.51.100.23", "LogonType": 10}

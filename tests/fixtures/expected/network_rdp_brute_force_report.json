@@ -1,0 +1,20 @@
+{
+  "_comment": "Expected outcome for tests/fixtures/logs/network_rdp_brute_force_security.log. Only the stable fields are asserted -- incident_id, verdict_id, and created_at are generated per run.",
+  "domain": "network",
+  "category": "network_brute_force",
+  "technique": "brute_force",
+  "severity": "high",
+  "min_confidence": 0.9,
+  "attempt_count": 10,
+  "succeeded": true,
+  "affected_accounts": [
+    "administrator"
+  ],
+  "affected_hosts": [
+    "jump-01"
+  ],
+  "mitre_techniques": [
+    "T1110"
+  ],
+  "used_llm": false
+}
