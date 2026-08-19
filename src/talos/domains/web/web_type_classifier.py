@@ -31,15 +31,11 @@ from talos.detection.patterns.pattern_engine import (
 )
 from talos.detection.patterns.sql_injection_pattern_rules import SQL_INJECTION_RULES
 from talos.detection.patterns.xss_pattern_rules import XSS_RULES
+from talos.ingestion.parsers.web_log_parser import LOGIN_ENDPOINT
 from talos.llm.model_client import render_prompt, seal_payload
 from talos.schemas.event_schema import NormalizedEvent
 
 _log = logging.getLogger(__name__)
-
-#: Paths that mean "this request is an authentication attempt".
-AUTH_ENDPOINT = re.compile(
-    r"/(?:login|signin|sign-in|auth|authenticate|session|token|oauth|register|password)", re.I
-)
 
 #: A path ending in an identifier is an object access -- the raw material for IDOR (P6).
 OBJECT_PATH = re.compile(r"/(?:\d+|[0-9a-f]{8,})/?$", re.I)
@@ -90,7 +86,11 @@ class WebTypeClassifier(TypeClassifier):
             return CATEGORY_INJECTION, INJECTION_CONFIDENCE
 
         path = event.request.path or ""
-        if AUTH_ENDPOINT.search(path):
+        # An auth event means the parser already read an outcome off the line; a login path with
+        # no outcome (the form being rendered, or a 200 that says nothing) still belongs to the
+        # auth sub-agent, whose detectors will ignore it. Routing it statically is what keeps a
+        # benign login page out of the routing model.
+        if event.auth is not None or LOGIN_ENDPOINT.search(path):
             return CATEGORY_AUTH_FAILURE, AUTH_CONFIDENCE
         if OBJECT_PATH.search(path) or event.target.resource_id:
             return CATEGORY_BROKEN_ACCESS_CONTROL, OBJECT_ACCESS_CONFIDENCE

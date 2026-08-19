@@ -8,6 +8,7 @@ almost nothing on its own.
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from collections.abc import Callable
@@ -20,6 +21,8 @@ from stub_model_client import StubModelRouter
 
 from talos.core.agent_contracts import DetectionContext
 from talos.core.settings import TalosSettings
+from talos.ingestion.parsers.network_log_parser import NetworkLogParser
+from talos.ingestion.parsers.web_log_parser import derive_http_auth
 from talos.knowledge.mitre_mapping import mitre_for
 from talos.schemas.event_schema import Actor, AuthEvent, NormalizedEvent, Target, WebRequest
 from talos.schemas.report_schema import IncidentReport
@@ -272,6 +275,9 @@ def make_web_event_impl(
             headers={},
             status_code=status,
         ),
+        # Derived through the parser's own function rather than hand-set, so a fixture can never
+        # claim an auth outcome the parser would not have read off the same line.
+        auth=derive_http_auth(path, method, status),
         raw=f'{source_ip} - - [15/Aug/2026] "{method} {path}?{rendered}" {status} 100',
     )
 
@@ -343,3 +349,146 @@ def feature_dir(fake_repo: Path) -> Path:
     for name in ("design.md", "testing.md", "changelog.md", "detection-logic.md"):
         write(feature / name, f"# {name}\n")
     return feature
+
+
+def make_web_auth_event_impl(
+    *,
+    account: str = "alice",
+    outcome: str = "failure",
+    source_ip: str = "203.0.113.50",
+    path: str = "/login",
+    offset_seconds: int = 0,
+    start: datetime = BURST_START,
+) -> NormalizedEvent:
+    """One HTTP login attempt. The status code is what the parser reads the outcome from."""
+    return make_web_event_impl(
+        path=path,
+        method="POST",
+        body=f"username={account}&password=hunter2",
+        status=401 if outcome == "failure" else 302,
+        source_ip=source_ip,
+        account=account,
+        offset_seconds=offset_seconds,
+        start=start,
+    )
+
+
+def make_rdp_event_impl(
+    *,
+    account: str = "administrator",
+    host: str = "jump-01",
+    source_ip: str = "198.51.100.23",
+    outcome: str = "failure",
+    offset_seconds: int = 0,
+    start: datetime = BURST_START,
+) -> NormalizedEvent:
+    """One Windows RDP logon event, built as JSON and read back through the real parser.
+
+    Going through ``NetworkLogParser`` rather than constructing the event by hand is deliberate:
+    a fixture that maps event ids to outcomes itself can drift from the parser that does it in
+    production, and then the tests pass while the pipeline is broken.
+    """
+    timestamp = start + timedelta(seconds=offset_seconds)
+    record = {
+        "EventID": 4625 if outcome == "failure" else 4624,
+        "TimeCreated": timestamp.isoformat().replace("+00:00", "Z"),
+        "Computer": host,
+        "TargetUserName": account,
+        "IpAddress": source_ip,
+        "LogonType": 10,
+        "SubStatus": "0xC000006A" if outcome == "failure" else "0x0",
+    }
+    event = NetworkLogParser(default_year=start.year).parse_line(json.dumps(record))
+    assert event is not None, "the fixture must produce a line the parser accepts"
+    return event
+
+
+@pytest.fixture
+def make_web_auth_event() -> Callable[..., NormalizedEvent]:
+    """Factory for one HTTP login attempt; see :func:`make_web_auth_event_impl`."""
+    return make_web_auth_event_impl
+
+
+@pytest.fixture
+def web_auth_events() -> Callable[..., list[NormalizedEvent]]:
+    """Factory for a login-failure window of a chosen shape.
+
+    ``accounts`` x ``fails_each`` is the whole discriminator: ``(1, 40)`` is depth against one
+    account and must read as brute force, ``(30, 2)`` is breadth across many and must read as
+    credential stuffing. One factory builds both so no test can accidentally compare two
+    differently-built corpora.
+    """
+
+    def build(
+        accounts: int = 1,
+        fails_each: int = 12,
+        *,
+        source_ip: str = "203.0.113.50",
+        spacing_seconds: int = 2,
+        succeeded_account: str | None = None,
+        path: str = "/login",
+    ) -> list[NormalizedEvent]:
+        events: list[NormalizedEvent] = []
+        offset = 0
+        for index in range(accounts):
+            account = "alice" if accounts == 1 else f"user{index:03d}"
+            for _ in range(fails_each):
+                events.append(
+                    make_web_auth_event_impl(
+                        account=account,
+                        source_ip=source_ip,
+                        path=path,
+                        offset_seconds=offset,
+                    )
+                )
+                offset += spacing_seconds
+        if succeeded_account is not None:
+            events.append(
+                make_web_auth_event_impl(
+                    account=succeeded_account,
+                    outcome="success",
+                    source_ip=source_ip,
+                    path=path,
+                    offset_seconds=offset,
+                )
+            )
+        return events
+
+    return build
+
+
+@pytest.fixture
+def rdp_events() -> Callable[..., list[NormalizedEvent]]:
+    """Factory for an RDP burst: ``rdp_events(count=10, succeeded=True)``."""
+
+    def build(
+        count: int = 10,
+        *,
+        succeeded: bool = False,
+        account: str = "administrator",
+        host: str = "jump-01",
+        source_ip: str = "198.51.100.23",
+        spacing_seconds: int = 5,
+    ) -> list[NormalizedEvent]:
+        events = [
+            make_rdp_event_impl(
+                account=account,
+                host=host,
+                source_ip=source_ip,
+                offset_seconds=index * spacing_seconds,
+            )
+            for index in range(count)
+        ]
+        if succeeded:
+            events.append(
+                make_rdp_event_impl(
+                    account=account,
+                    host=host,
+                    source_ip=source_ip,
+                    outcome="success",
+                    offset_seconds=count * spacing_seconds,
+                )
+            )
+        return events
+
+    return build

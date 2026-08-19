@@ -12,6 +12,16 @@ string stops changing is how a filter gets walked past: the attacker picks the n
 and whatever the parser lands on is not what the application saw. One layer is what a web server
 gives the application, so one layer is what a detector reasons about — and `raw` keeps the
 original so evidence quotes what was actually on the wire (LLD 5.2).
+
+**HTTP logins become `AuthEvent`s here, not in a detector** (LLD 5.2, 7.3.1). `sshd` states the
+outcome in words; an access log states it as a status code against a path, so the same
+translation has to happen somewhere — and doing it in the parser is what lets the web auth
+detectors read the identical `event.auth` shape the network ones read, and what lets the web
+classifier route on the presence of an auth event instead of keeping a second copy of the
+endpoint pattern. What an access log cannot tell us is recorded as `None`: an application that
+answers a failed login with `200` and a re-rendered form is invisible to this, and no amount of
+parsing changes that -- the limits are listed in
+`docs/features/web-auth-failure-detection/detection-logic.md`.
 """
 
 from __future__ import annotations
@@ -24,7 +34,7 @@ from typing import Any
 from urllib.parse import parse_qsl, unquote_plus, urlsplit
 
 from talos.ingestion.parser_contract import BaseParser
-from talos.schemas.event_schema import Actor, NormalizedEvent, Target, WebRequest
+from talos.schemas.event_schema import Actor, AuthEvent, NormalizedEvent, Target, WebRequest
 
 #: Apache/nginx combined: host, ident, user, [time], "request", status, size, "referer", "agent"
 COMBINED_LINE = re.compile(
@@ -60,6 +70,44 @@ SOURCE_APP_LOG = "app_log"
 
 #: A JSON line carrying any of these is a WAF record rather than a plain access log.
 WAF_MARKERS = ("rule_id", "waf", "attack_type", "anomaly_score", "blocked", "action")
+
+#: Paths where a request is an attempt to authenticate. Registration and password-reset paths are
+#: deliberately absent: a 201 from ``POST /register`` is a new account, not a login, and counting
+#: it as a trailing success would raise the confidence of a burst it has nothing to do with.
+LOGIN_ENDPOINT = re.compile(
+    r"/(?:login|signin|sign-in|auth|authenticate|session|token|oauth)", re.I
+)
+
+#: Methods that submit credentials. A ``GET /login`` is the form being rendered, not an attempt.
+CREDENTIAL_METHODS = frozenset({"POST", "PUT", "PATCH"})
+
+#: The status codes an access log states an authentication outcome with.
+AUTH_FAILURE_STATUSES = frozenset({401, 403})
+
+#: Parameter names that carry the account being authenticated, in preference order.
+ACCOUNT_PARAMS = ("username", "user", "email", "login", "account", "userid", "uid", "j_username")
+
+
+def derive_http_auth(path: str | None, method: str | None, status: int | None) -> AuthEvent | None:
+    """Read an authentication outcome off a request line, or ``None`` when it states none.
+
+    Three cases, in order:
+
+    * ``401``/``403`` on a login path -- a failure, whatever the method; a rejected Basic or
+      Bearer credential is a failed authentication just as much as a rejected form post is.
+    * a credential-carrying method answered ``2xx``/``3xx`` -- a success. A ``302`` is the
+      overwhelmingly common shape of a successful form login.
+    * anything else -- ``None``. Not a guess, an absence: a ``200`` on ``POST /login`` from an
+      application that re-renders the form on failure is genuinely ambiguous in an access log,
+      and recording it as a success would put a false ``succeeded`` on a real burst.
+    """
+    if not path or status is None or not LOGIN_ENDPOINT.search(path):
+        return None
+    if status in AUTH_FAILURE_STATUSES:
+        return AuthEvent(protocol="http", outcome="failure", reason="rejected_credentials")
+    if (method or "").upper() in CREDENTIAL_METHODS and 200 <= status < 400:
+        return AuthEvent(protocol="http", outcome="success", reason="accepted")
+    return None
 
 
 class WebLogParser(BaseParser):
@@ -170,6 +218,12 @@ class WebLogParser(BaseParser):
         if timestamp is None or not source_ip:
             return None
         session = headers.get("x-session-id")
+        auth = derive_http_auth(path, method, status)
+        if auth is not None:
+            # Only now is it worth digging the username out of the submission: on a login
+            # attempt the account is the thing being attacked, and on every other request it is
+            # a form field nothing reads.
+            account = account or _submitted_account(query_params, body)
         return NormalizedEvent(
             event_id=uuid.uuid4().hex,
             timestamp=timestamp,
@@ -190,9 +244,39 @@ class WebLogParser(BaseParser):
                 headers=headers,
                 status_code=status,
             ),
+            auth=auth,
             raw=raw,
             meta=meta,
         )
+
+
+def _submitted_account(query_params: dict[str, str], body: str | None) -> str | None:
+    """The account named in the query string or the submitted body, if either names one.
+
+    Reads the *undecoded* body, because ``parse_qsl`` and ``json.loads`` each decode once and a
+    second pass would be the double decode LLD 5.2 forbids. Only the account field is read --
+    the password sitting beside it is never copied into an event.
+    """
+    for source in (query_params, _body_fields(body)):
+        for name in ACCOUNT_PARAMS:
+            value = source.get(name)
+            if value:
+                return value
+    return None
+
+
+def _body_fields(body: str | None) -> dict[str, str]:
+    """Form-encoded or JSON body as a flat string map. Anything else is an empty map."""
+    if not body:
+        return {}
+    stripped = body.strip()
+    if stripped.startswith("{"):
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return {}
+        return _as_str_map(parsed)
+    return dict(parse_qsl(stripped, keep_blank_values=True))
 
 
 def _split_target(target: str) -> tuple[str, dict[str, str]]:

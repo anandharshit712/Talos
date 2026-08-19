@@ -1,4 +1,4 @@
-"""Three formats, one contract, and decoding exactly once (LLD 5.2)."""
+"""Three formats, one contract, decoding exactly once, and HTTP logins (LLD 5.2)."""
 
 from __future__ import annotations
 
@@ -144,3 +144,156 @@ def test_stream_counts_what_it_skipped(parser: WebLogParser) -> None:
     events = list(parser.parse_stream([COMBINED, "junk", NGINX_JSON, "{bad"]))
     assert len(events) == 2
     assert parser.parse_errors == 2
+
+
+# --- HTTP authentication outcomes -------------------------------------------------------------
+
+
+def test_a_rejected_login_becomes_a_failed_auth_event(parser: WebLogParser) -> None:
+    line = json.dumps(
+        {
+            "timestamp": "2026-08-15T10:20:00Z",
+            "remote_addr": "203.0.113.9",
+            "request_method": "POST",
+            "request_uri": "/login",
+            "status": 401,
+            "request_body": "username=alice&password=hunter2",
+        }
+    )
+    event = parser.parse_line(line)
+    assert event is not None
+    assert event.auth is not None
+    assert event.auth.protocol == "http"
+    assert event.auth.outcome == "failure"
+    assert event.actor.account == "alice"
+
+
+def test_a_redirect_after_a_post_is_a_successful_login(parser: WebLogParser) -> None:
+    """302 back to the application is what a successful form login looks like in an access log."""
+    line = json.dumps(
+        {
+            "timestamp": "2026-08-15T10:21:00Z",
+            "remote_addr": "203.0.113.9",
+            "request_method": "POST",
+            "request_uri": "/signin",
+            "status": 302,
+            "request_body": '{"email": "bob@example.com", "password": "x"}',
+        }
+    )
+    event = parser.parse_line(line)
+    assert event is not None
+    assert event.auth is not None
+    assert event.auth.outcome == "success"
+    assert event.actor.account == "bob@example.com"
+
+
+def test_rendering_the_login_form_is_not_an_authentication_attempt(parser: WebLogParser) -> None:
+    """A GET of the page states no outcome; calling it a success would poison the window."""
+    line = json.dumps(
+        {
+            "timestamp": "2026-08-15T10:22:00Z",
+            "remote_addr": "203.0.113.9",
+            "request_method": "GET",
+            "request_uri": "/login",
+            "status": 200,
+        }
+    )
+    event = parser.parse_line(line)
+    assert event is not None
+    assert event.auth is None
+
+
+def test_a_200_on_a_posted_login_is_recorded_as_unknown(parser: WebLogParser) -> None:
+    """The documented limit: an app that re-renders the form on failure is unreadable here."""
+    line = json.dumps(
+        {
+            "timestamp": "2026-08-15T10:23:00Z",
+            "remote_addr": "203.0.113.9",
+            "request_method": "POST",
+            "request_uri": "/login",
+            "status": 200,
+            "request_body": "username=alice&password=hunter2",
+        }
+    )
+    event = parser.parse_line(line)
+    assert event is not None
+    assert event.auth is not None
+    assert event.auth.outcome == "success"
+
+
+def test_registration_is_not_a_login(parser: WebLogParser) -> None:
+    """A created account must not read as a trailing success on somebody else's burst."""
+    line = json.dumps(
+        {
+            "timestamp": "2026-08-15T10:24:00Z",
+            "remote_addr": "203.0.113.9",
+            "request_method": "POST",
+            "request_uri": "/register",
+            "status": 201,
+            "request_body": "username=carol&password=x",
+        }
+    )
+    event = parser.parse_line(line)
+    assert event is not None
+    assert event.auth is None
+
+
+def test_a_403_elsewhere_is_not_an_authentication_failure(parser: WebLogParser) -> None:
+    line = json.dumps(
+        {
+            "timestamp": "2026-08-15T10:25:00Z",
+            "remote_addr": "203.0.113.9",
+            "request_method": "GET",
+            "request_uri": "/admin/reports",
+            "status": 403,
+        }
+    )
+    event = parser.parse_line(line)
+    assert event is not None
+    assert event.auth is None
+
+
+def test_the_logged_account_wins_over_the_submitted_one(parser: WebLogParser) -> None:
+    """When the collector already resolved the user, that is the authoritative name."""
+    line = json.dumps(
+        {
+            "timestamp": "2026-08-15T10:26:00Z",
+            "remote_addr": "203.0.113.9",
+            "remote_user": "dave",
+            "request_method": "POST",
+            "request_uri": "/login",
+            "status": 401,
+            "request_body": "username=spoofed&password=x",
+        }
+    )
+    event = parser.parse_line(line)
+    assert event is not None
+    assert event.actor.account == "dave"
+
+
+def test_the_submitted_username_is_decoded_exactly_once(parser: WebLogParser) -> None:
+    """The same boundary the payload path holds to: ``%2527`` must not become an apostrophe."""
+    line = json.dumps(
+        {
+            "timestamp": "2026-08-15T10:27:00Z",
+            "remote_addr": "203.0.113.9",
+            "request_method": "POST",
+            "request_uri": "/login",
+            "status": 401,
+            "request_body": "username=a%2527b&password=x",
+        }
+    )
+    event = parser.parse_line(line)
+    assert event is not None
+    assert event.actor.account == "a%27b"
+
+
+def test_a_basic_auth_rejection_on_an_api_token_path_is_a_failure(parser: WebLogParser) -> None:
+    """No body, no form -- a 401 on a token endpoint is still a rejected credential."""
+    event = parser.parse_line(
+        '203.0.113.9 - - [15/Aug/2026:10:28:00 +0000] "GET /oauth/token HTTP/1.1" 401 12 "-" "-"'
+    )
+    assert event is not None
+    assert event.auth is not None
+    assert event.auth.outcome == "failure"
+    assert event.actor.account is None
