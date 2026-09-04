@@ -12,7 +12,7 @@ Models are optional. With provider keys set, narratives are model-written and `u
 with none set, every detector falls back to its templated narrative and `used_llm` is false. Both
 paths produce the same detections, because detection is statistical and the model only words it.
 
-``serve`` and ``replay`` arrive in P7.
+Incidents persist to PostgreSQL from P6; ``serve`` and ``replay`` arrive in P7.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ from talos.orchestrator.verdict_aggregator import VerdictAggregator
 from talos.output.sinks.json_file_sink import JsonFileSink
 from talos.output.sinks.stdout_sink import StdoutSink
 from talos.storage.event_window_store import EventWindowStore
+from talos.storage.postgres_connection_pool import PostgresConnectionPool
 from talos.storage.verdict_log_store import VerdictLogStore
 
 _log = logging.getLogger("talos.cli")
@@ -122,6 +123,24 @@ async def scan_file(
     return result
 
 
+async def _scan_with_storage(args: argparse.Namespace, settings: TalosSettings) -> ScanResult:
+    """Open the pool, run the scan, and always give the connections back.
+
+    The pool is opened here rather than in ``build_orchestrator`` because the caller owns its
+    lifetime: every store shares one pool, and closing it is the scan's job, not a store's.
+    """
+    database = settings.storage.database
+    pool = PostgresConnectionPool(args.dsn or database.resolve_dsn(), database)
+    try:
+        orchestrator = build_orchestrator(settings, VerdictLogStore(pool))
+        parser: BaseParser = (
+            WebLogParser() if args.domain == "web" else NetworkLogParser(default_year=args.year)
+        )
+        return await scan_file(args.file, parser, orchestrator, build_sinks(settings, args.pretty))
+    finally:
+        await pool.close()
+
+
 def _run_scan(args: argparse.Namespace) -> int:
     if not args.file.is_file():
         print(f"no such log file: {args.file}", file=sys.stderr)
@@ -130,17 +149,7 @@ def _run_scan(args: argparse.Namespace) -> int:
     settings = TalosSettings.load(config_dir=args.config_dir)
     configure_logging(args.log_level or settings.log_level)
 
-    verdict_log = VerdictLogStore(args.db or settings.db_path)
-    try:
-        orchestrator = build_orchestrator(settings, verdict_log)
-        parser: BaseParser = (
-            WebLogParser() if args.domain == "web" else NetworkLogParser(default_year=args.year)
-        )
-        result = asyncio.run(
-            scan_file(args.file, parser, orchestrator, build_sinks(settings, args.pretty))
-        )
-    finally:
-        verdict_log.close()
+    result = asyncio.run(_scan_with_storage(args, settings))
 
     print(
         f"scanned {args.file}: {result.events} event(s), "
@@ -156,7 +165,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan = subcommands.add_parser("scan", help="run a log file through the pipeline")
     scan.add_argument("file", type=Path, help="log file to scan")
-    scan.add_argument("--db", type=Path, default=None, help="SQLite path for the verdict log")
+    scan.add_argument(
+        "--dsn",
+        default=None,
+        help="PostgreSQL DSN for the verdict log (default: the variable named by "
+        "talos.storage.database.dsn_env)",
+    )
     scan.add_argument(
         "--config-dir", type=Path, default=None, help="directory holding the YAML config"
     )

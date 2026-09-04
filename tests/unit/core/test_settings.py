@@ -118,6 +118,18 @@ def test_missing_env_file_is_not_an_error(tmp_path: Path) -> None:
     assert load_env_file(tmp_path / "absent") == []
 
 
+def test_env_example_names_the_variable_the_config_points_at(tmp_path: Path) -> None:
+    """The DSN is documented in .env.example and named in config/; the two must agree.
+
+    They are edited in different files, so nothing but this stops a rename in one from leaving
+    the other pointing at a variable nobody sets.
+    """
+    example = (Path(__file__).resolve().parents[3] / ".env.example").read_text(encoding="utf-8")
+    settings = TalosSettings.load(config_dir=default_config_dir(), overlay=tmp_path / "absent.yaml")
+
+    assert f"{settings.storage.database.dsn_env}=" in example
+
+
 def test_env_example_documents_only_real_settings(tmp_path: Path) -> None:
     """.env.example lists ~20 variables and their defaults by hand. Hand-written reference
     documentation rots silently; this is the only thing that stops it."""
@@ -133,6 +145,9 @@ def test_env_example_documents_only_real_settings(tmp_path: Path) -> None:
         "TALOS_MISTRAL_API_KEY",
         "TALOS_CONFIG_DIR",
         "TALOS_CONFIG_PATH",
+        # A DSN carries a password, so it is never a settings field either. What IS a field is
+        # the NAME of this variable -- talos.storage.database.dsn_env, pinned by the test above.
+        "TALOS_DB_DSN",
     }
     settings = TalosSettings.load(config_dir=default_config_dir(), overlay=tmp_path / "absent.yaml")
 

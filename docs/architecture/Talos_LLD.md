@@ -891,5 +891,16 @@ until P6.0 ports them (HLD §7.1 stages SQLite through P5), and `asyncpg` is not
 | **Prompt `rate_detector_narrate_v1` → `v2`** | §7.3, §9 | Adds the distinct-account fact and tells the model to read the threshold against the matching dimension. Without it a stuffing narrative describes a breadth finding as a failure count. All four detectors use it; v1 is deleted. |
 | **`VerdictAggregator` no longer sorts MITRE ids** | §7.4, §11 | `mitre_all` promises primary-first and the aggregator sorted by id, so credential stuffing — the first technique carrying two mappings — produced incidents leading with T1110 instead of T1110.004. Insertion order now, deterministic given a fixed detector registration order. |
 
+### 16.10 Revision 1.10 — the audit trail moves to PostgreSQL, P6.0 (2026-09-04)
+
+| Change | Where | Why |
+|---|---|---|
+| **`VerdictLogStore` reimplemented on `asyncpg`** | §4.2, §16.5 | The engine change §16.5 scheduled for P6. `ON CONFLICT (incident_id) DO UPDATE` replaces `INSERT OR REPLACE`, `created_at` is `timestamptz` rather than ISO text, and `report_json` is `jsonb` with a GIN index so the stored report is queryable rather than opaque. **No agent, detector, orchestrator, or aggregator file changed** — the payoff for making the store Protocols `async` in §16.6. |
+| **New `storage/postgres_connection_pool.py`** | §2.1 tree, §12 | One pool per process, borrowed by every store and opened on first use. It also closes the P2 limitation that the store held one connection from `__init__` with no recovery: asyncpg replaces a dead connection on the next acquire, so the reconnect layer is a dependency rather than our code. Suffix `_pool` added to the standards §3.1 vocabulary in the same commit. |
+| **`db/migrations/postgres/` baseline set** | §4.2, standards §4.3 | A DDL dialect is not portable. The SQLite set stays unedited and forward-only; the `schema_migrations` ledger lives in whichever database a set is applied to, so the two never interleave. `apply_migrations.py` gained `--engine`, defaulting to postgres, and applies each PostgreSQL migration in its own transaction. |
+| **`talos.storage.database` config block; `db_path` deleted** | §10 | Pool bounds and timeouts are configuration; the DSN is a credential and never enters the YAML tree — the block holds only `dsn_env`, the *name* of the variable, exactly as `providers.api_key_env` does. `talos scan --db <path>` became `--dsn`, closing the "db_path is a file path, not a DSN" item carried since P1. |
+| **A missing DSN is fatal at startup** | §10, §14 | Fail-safe for reporting: a pipeline that cannot reach its audit trail must stop, not detect into nothing and report success. `ConfigError` names both the variable and `.env`. |
+| **The e2e pipeline tests double the audit trail** | §14 | The store now needs a live server, and what those tests exist to prove is the chain that produces an `IncidentReport`. The live round-trip — including twenty concurrent appends, the case SQLite's database-wide write lock could not serve — moved to `tests/integration/test_verdict_log_postgres.py`, gated on `TALOS_TEST_DB_DSN` so the suite can never write into an operator's database. |
+
 ---
 *End of LLD.*

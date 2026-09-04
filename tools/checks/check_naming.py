@@ -61,6 +61,7 @@ ROLE_SUFFIXES = (
     "_baseliner",
     "_scorer",
     "_store",
+    "_pool",
     "_client",
     "_router",
     "_server",

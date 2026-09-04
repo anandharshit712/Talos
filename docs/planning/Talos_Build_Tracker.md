@@ -559,31 +559,59 @@ the per-event hot path. Rationale in full: HLD §7.1, recorded as LLD §16.5. Po
 store moves and the other is written against PostgreSQL from the start; at P7 it would be two
 stores plus a live API.
 
-- [ ] PostgreSQL installed and running as a **native service** (no container — see plan scope note)
-- [ ] **Stop and ask the owner before creating the database.** A dedicated role is created for
-      Talos rather than reusing a superuser; the owner supplies the role and database name. The
-      DSN lives in `.env` (git-ignored) and config references it by variable name only
-- [ ] `db/migrations/postgres/` created; the SQLite set left unedited and forward-only (R4)
-- [ ] `db/migrations/postgres/create_verdict_log_table_<stamp>.sql` + rollback — `timestamptz`
-      for `created_at`, `jsonb` + GIN for `report_json`
-- [ ] `scripts/apply_migrations.py` (+60) — engine argument; the `schema_migrations` ledger lives
-      in whichever database it is applied to, so the two sets never interleave
+- [x] PostgreSQL installed and running as a **native service** (no container — see plan scope note)
+      — **17.2**, confirmed by the owner 2026-09-04
+- [x] **Asked the owner before creating the database.** Role `talos`, database `talos`, role owns
+      the database. The DSN lives in `.env` (git-ignored) and config references it by variable
+      name only (`talos.storage.database.dsn_env` → `TALOS_DB_DSN`)
+- [x] `db/migrations/postgres/` created; the SQLite set left unedited and forward-only (R4)
+- [x] `db/migrations/postgres/create_verdict_log_table_20260904_091113.sql` + rollback —
+      `timestamptz` for `created_at`, `jsonb` + GIN for `report_json`
+- [x] `scripts/apply_migrations.py` — `--engine {postgres,sqlite}`, defaulting to postgres; the
+      `schema_migrations` ledger lives in whichever database it is applied to, so the two sets
+      never interleave. Each PostgreSQL migration runs in its own transaction, so a failure
+      part-way leaves the earlier ones applied and a rerun continues
 - [x] **Done early (2026-08-18):** `check_naming` enforces R4.3/R4.4 inside every migration set,
       so the PostgreSQL set is checked the day it appears rather than shipping unverified;
       standards §2.1 and §4.3 document `db/migrations/<engine>/`
 - [x] **Done early (2026-08-18):** store Protocols are `async`, so the port changes
       implementations only — no orchestrator, agent, or detector edit (LLD §16.6)
-- [ ] `storage/postgres_connection_pool.py` (~90) — pool + reconnect, shared by both stores
-- [ ] `storage/verdict_log_store.py` (+60) — `asyncpg`, `ON CONFLICT (incident_id) DO UPDATE`
-      replacing `INSERT OR REPLACE`; store methods become `async`
-- [ ] `config/default.yaml` — `talos.storage.database` block (DSN by env var, pool bounds); the
-      DSN never enters the YAML tree
-- [ ] Test strategy decided and written down: unit tests against a fake behind `VerdictRecorder`,
-      integration suite against a live instance. **Testcontainers is not available** (needs Docker);
-      CI provisions PostgreSQL as a GitHub Actions service
-- [ ] `docs/features/incident-aggregation/changelog.md` — engine change recorded
-- [ ] **Verify:** `VerdictRecorder` / `BaselineReader` Protocols unchanged — no agent or detector
-      touched by this port
+- [x] `storage/postgres_connection_pool.py` (83) — pool, shared by every store, opened on first
+      use. **Reconnect is asyncpg's**, not ours: it replaces a dead connection on the next
+      acquire, so the P2 "one connection, no recovery" limitation closes without a reconnect
+      layer of our own
+- [x] `storage/verdict_log_store.py` — `asyncpg`, `ON CONFLICT (incident_id) DO UPDATE`
+      replacing `INSERT OR REPLACE`; store methods were already `async` (P1, LLD §16.6)
+- [x] `config/default.yaml` — `talos.storage.database` block (DSN by env var, pool bounds); the
+      DSN never enters the YAML tree. `TalosSettings.db_path` deleted, `talos scan --db` → `--dsn`
+- [x] Test strategy decided and written down: statement-level unit tests through a fake
+      connection (`test_verdict_log_store.py`), lifecycle tests for the pool, and a live
+      integration suite gated on `TALOS_TEST_DB_DSN` — a *separate* variable from `TALOS_DB_DSN`
+      so the suite can never write into an operator's database. **Testcontainers is not
+      available** (needs Docker); `.github/workflows/checks.yml` provisions `postgres:17` as a
+      GitHub Actions service and applies migrations before `pytest`
+- [x] `docs/features/incident-aggregation/changelog.md` — engine change recorded; LLD §16.10
+- [x] **Verified:** `VerdictRecorder` / `BaselineReader` Protocols unchanged — `git diff --stat`
+      touches no agent, detector, orchestrator, or aggregator file
+
+### P6.0.1 Found while building the port
+
+- [x] **`postgres_connection_pool.py` had no legal name.** R3.1's closed vocabulary has no `_pool`
+      suffix, so the filename the plan itself specified would have failed `check_naming`. Added
+      `_pool` to standards §3.1 and to the checker in the same commit, which is the documented
+      escape hatch rather than a workaround.
+- [x] **The e2e pipeline tests were writing to the store for real.** With PostgreSQL they would
+      have needed a live server to run at all, so `pytest` would stop working on a clean clone.
+      They now take an in-memory recorder and the live round-trip moved to `tests/integration/`.
+      The honest cost: the e2e docstring claiming "the only thing this test fakes is nothing" is
+      no longer true and was corrected.
+- [x] **`ruff format --check` was already failing at HEAD**, on two P5 files nobody had touched
+      since. Ruff 0.14.10 formats differently from the version that ran at the P5 gate, so the
+      gate was green when it was run and red afterwards. Reformatted; the lesson is that a
+      formatter version is a gate input and P8 should pin it.
+- [x] **A separate `TALOS_TEST_DB_DSN`**, not the production variable, gates the integration
+      suite. Reusing `TALOS_DB_DSN` would mean an ordinary `pytest` run writes test rows into
+      whatever database the operator last configured.
 
 ### P6.1 Baseline machinery
 
@@ -695,10 +723,10 @@ sequence should a phase overrun badly enough to need it again.
 | One incident per escalation, not per campaign | P2 | P8 | a burst that doubles re-reports; whether that is the right cadence is a calibration question |
 | Calibration curve values empty | P1 | P8 | shape fixed (`detector -> {parameter: float}`), values measured in P8 |
 | `EventWindowStore` is RAM-only | P2 | P7 | a restart mid-burst loses every in-flight window, so the detector forgets an attack in progress. Fix is persistence or replay-on-start; neither belongs in P6 |
-| No retention policy on `verdict_log` | P2 | P7 | the incident log grows without bound. Cheap once on PostgreSQL (partition or a dated delete); decide the window first |
-| Stores hold one connection, no reconnect | P2 | **P6** | `VerdictLogStore` opens a connection in `__init__` and never recovers if it drops. Closed by `postgres_connection_pool.py` in P6.0 |
-| `db_path` is a file path, not a DSN | P1 | **P6** | `TalosSettings.db_path` and `talos scan --db` assume a file. P6.0 adds the `talos.storage.database` block; the CLI flag becomes engine-aware |
-| SQLite dialect still in `src/` | P2 | **P6** | `INSERT OR REPLACE` and the `sqlite3` import in `verdict_log_store.py`. Correct until P5 per HLD §7.1; P6.0 replaces both |
+| No retention policy on `verdict_log` | P2 | P7 | the incident log grows without bound. Now cheap — PostgreSQL is in place, so a partition or a dated delete on `created_at` will do; decide the window first |
+| ~~Stores hold one connection, no reconnect~~ | P2 | **done P6.0** | Closed by `postgres_connection_pool.py`: asyncpg replaces a dead connection on the next acquire |
+| ~~`db_path` is a file path, not a DSN~~ | P1 | **done P6.0** | `db_path` deleted; `talos.storage.database.dsn_env` names the variable and `talos scan --dsn` replaces `--db` |
+| ~~SQLite dialect still in `src/`~~ | P2 | **done P6.0** | `src/` imports `asyncpg` only; the SQLite set survives under `db/migrations/` as forward-only history |
 
 ---
 
@@ -706,8 +734,8 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.9 | 2026-09-04 | P6.0 recorded as done: the audit trail on PostgreSQL, the shared pool, the per-engine migration sets, and the four things the port exposed. Three storage open items closed. |
 | 1.8 | 2026-09-04 | Submission moved to 2026-10-09. Remaining phases carry day counts, not calendar dates; the §8.1 cut order goes dormant and P6 is built in full, PostgreSQL port included. |
-| 1.0 | 2026-08-17 | Initial tracker: dashboard, per-phase/per-section checklists for P0–P9, cut order, open items. P0 and P1 recorded as done. |
 | 1.7 | 2026-08-19 | P5 recorded as done: two web auth detectors, RDP, the shared verdict engine, and the five things building it exposed — including a web parser that had never populated `auth`. Rotated stuffing added to deferred items. |
 | 1.6 | 2026-08-18 | The LLM off switch, the documented `.env.example`, and the defect that review exposed: provider keys on disk were never loaded. |
 | 1.5 | 2026-08-18 | P4 recorded as done with measured precision/recall, the four defects found while building, and the honest reading of a 28-line corpus. |
@@ -715,3 +743,4 @@ sequence should a phase overrun badly enough to need it again.
 | 1.3 | 2026-08-18 | Storage engine decided: PostgreSQL from P6, with P6.0 added as the migration section and a gate row for it. "Prototype scope" defined as breadth-only. Three storage limits added to open items. |
 | 1.2 | 2026-08-18 | P3 recorded as done with per-section detail, live gate evidence, and the injection defect the hardening suite caught. |
 | 1.1 | 2026-08-18 | P2 recorded as done with per-section detail and measured gate results; open items updated (window config closed, two suppression items added). |
+| 1.0 | 2026-08-17 | Initial tracker: dashboard, per-phase/per-section checklists for P0–P9, cut order, open items. P0 and P1 recorded as done. |

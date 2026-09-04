@@ -63,11 +63,16 @@ pre-commit install
 cp .env.example .env        # add provider keys, or leave them blank to run statistics-only
 ```
 
-Create the database, then scan a log:
+Talos records every incident in PostgreSQL (16 or newer, installed natively -- there is no
+container this cycle). Create a role and a database for it, put the DSN in `.env` as
+`TALOS_DB_DSN`, then apply the schema and scan a log:
 
 ```bash
-python scripts/apply_migrations.py --db talos.db
-talos scan tests/fixtures/logs/network_ssh_brute_force_sshd.log --db talos.db --pretty
+createdb talos && createuser talos --pwprompt   # or the equivalent in psql / pgAdmin
+# .env: TALOS_DB_DSN=postgresql://talos:PASSWORD@localhost:5432/talos
+
+python scripts/apply_migrations.py
+talos scan tests/fixtures/logs/network_ssh_brute_force_sshd.log --pretty
 ```
 
 Reports go to stdout as JSON and to `out/reports/`; diagnostics and the run summary go to stderr,

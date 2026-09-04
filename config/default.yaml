@@ -38,6 +38,17 @@ talos:
     event_window_ttl_seconds: 900
     event_window_max_events: 2000
 
+    # PostgreSQL from P6 (HLD 7.1, LLD 16.5). Only the NAME of the variable holding the DSN
+    # appears here -- a DSN carries a password, and a password in the config tree is a password
+    # in git. Set the variable itself in .env, which is git-ignored.
+    database:
+      dsn_env: TALOS_DB_DSN
+      # One connection is enough for a scan; the ceiling is what a served API needs (P7).
+      pool_min_size: 1
+      pool_max_size: 10
+      connect_timeout_seconds: 10.0
+      command_timeout_seconds: 30.0
+
   llm:
     # Master switch. false makes every model call return None, so detectors narrate from
     # templates and every verdict carries used_llm=false. That path is tested and supported --

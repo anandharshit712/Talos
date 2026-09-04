@@ -62,7 +62,7 @@ What is suppressed is the repeated *alert*. `aggregation.suppress_duplicates: fa
 
 | Destination | Behaviour |
 |---|---|
-| `VerdictLogStore` (SQLite) | one row per incident, full report stored as JSON; re-appending the same `incident_id` replaces it |
+| `VerdictLogStore` (PostgreSQL) | one row per incident, full report stored verbatim as `jsonb`; re-appending the same `incident_id` replaces it (`ON CONFLICT DO UPDATE`). Connections come from the process-wide `PostgresConnectionPool`; a missing `TALOS_DB_DSN` is fatal at startup, and a missing table names the migration runner |
 | `StdoutSink` | one JSON object per line on stdout (`--pretty` indents for a demo) |
 | `JsonFileSink` | `<talos.output.report_dir>/<incident_id>.json`, directory created on demand |
 

@@ -1,7 +1,10 @@
 """**The P2 gate.** A log file goes in, a correct ``IncidentReport`` comes out, no LLM involved.
 
-Every layer runs for real -- parser, event window, orchestrator, domain agent, classifier,
-sub-agent, detector, aggregator, verdict log. The only thing this test fakes is nothing.
+Every layer of the pipeline runs for real -- parser, event window, orchestrator, domain agent,
+classifier, sub-agent, detector, aggregator. The one double is the audit trail: from P6 the
+real store needs a live PostgreSQL server, and what this test is about is the chain that
+produces the report, not the database that files it. The live round-trip is
+``tests/integration/test_verdict_log_postgres.py``.
 """
 
 from __future__ import annotations
@@ -9,15 +12,14 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
-from apply_migrations import apply_pending
 
 from talos.cli.main_cli import build_orchestrator, scan_file
 from talos.core.settings import TalosSettings
 from talos.ingestion.parsers.network_log_parser import NetworkLogParser
 from talos.schemas.report_schema import IncidentReport
-from talos.storage.verdict_log_store import VerdictLogStore
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 SSH_LOG = FIXTURES / "logs" / "network_ssh_brute_force_sshd.log"
@@ -27,10 +29,8 @@ pytestmark = pytest.mark.e2e
 
 
 @pytest.fixture
-def reports(tmp_path: Path) -> list[IncidentReport]:
+def reports(tmp_path: Path, verdict_log: Any) -> list[IncidentReport]:
     """Run the fixture log through the whole pipeline and collect what it produced."""
-    db_path = tmp_path / "talos.db"
-    apply_pending(db_path)
     settings = TalosSettings.load(config_dir=tmp_path / "absent")
     settings.output.report_dir = tmp_path / "reports"
 
@@ -42,14 +42,13 @@ def reports(tmp_path: Path) -> list[IncidentReport]:
         def emit(self, report: IncidentReport) -> None:
             collected.append(report)
 
-    with VerdictLogStore(db_path) as verdict_log:
-        orchestrator = build_orchestrator(settings, verdict_log)
-        result = asyncio.run(
-            scan_file(SSH_LOG, NetworkLogParser(default_year=2026), orchestrator, [_Collector()])  # type: ignore[list-item]
-        )
-        assert result.events > 0
-        assert result.skipped_lines > 0  # the fixture contains noise on purpose
-        assert asyncio.run(verdict_log.recent()), "incidents must reach the audit trail"
+    orchestrator = build_orchestrator(settings, verdict_log)
+    result = asyncio.run(
+        scan_file(SSH_LOG, NetworkLogParser(default_year=2026), orchestrator, [_Collector()])  # type: ignore[list-item]
+    )
+    assert result.events > 0
+    assert result.skipped_lines > 0  # the fixture contains noise on purpose
+    assert verdict_log.reports, "incidents must reach the audit trail"
     return collected
 
 

@@ -14,6 +14,23 @@ jobs:
       matrix:
         python-version: ["3.11", "3.13"]
 
+    # Testcontainers needs Docker, which this cycle excludes on the development machine
+    # (plan scope note), so CI provisions PostgreSQL as a service instead. The integration
+    # suite skips locally when TALOS_TEST_DB_DSN is unset; here it always runs.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: talos
+          POSTGRES_PASSWORD: talos
+          POSTGRES_DB: talos_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -38,5 +55,13 @@ jobs:
       - name: Types
         run: python -m mypy
 
+      - name: Apply migrations to the test database
+        run: python scripts/apply_migrations.py
+        env:
+          TALOS_DB_DSN: postgresql://talos:talos@localhost:5432/talos_test
+
       - name: Tests
         run: python -m pytest
+        env:
+          # Only the integration suite reads this; everything else runs without a database.
+          TALOS_TEST_DB_DSN: postgresql://talos:talos@localhost:5432/talos_test

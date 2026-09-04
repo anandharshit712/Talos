@@ -13,15 +13,14 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
-from apply_migrations import apply_pending
 
 from talos.cli.main_cli import build_orchestrator, scan_file
 from talos.core.settings import TalosSettings
 from talos.ingestion.parsers.web_log_parser import WebLogParser
 from talos.schemas.report_schema import IncidentReport
-from talos.storage.verdict_log_store import VerdictLogStore
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 ACCESS_LOG = FIXTURES / "logs" / "web_credential_stuffing_access.log"
@@ -31,10 +30,8 @@ pytestmark = pytest.mark.e2e
 
 
 @pytest.fixture
-def reports(tmp_path: Path) -> list[IncidentReport]:
+def reports(tmp_path: Path, verdict_log: Any) -> list[IncidentReport]:
     """Run the fixture log through the whole pipeline and collect what it produced."""
-    db_path = tmp_path / "talos.db"
-    apply_pending(db_path)
     settings = TalosSettings.load(config_dir=tmp_path / "absent")
     settings.output.report_dir = tmp_path / "reports"
 
@@ -46,14 +43,13 @@ def reports(tmp_path: Path) -> list[IncidentReport]:
         def emit(self, report: IncidentReport) -> None:
             collected.append(report)
 
-    with VerdictLogStore(db_path) as verdict_log:
-        orchestrator = build_orchestrator(settings, verdict_log)
-        result = asyncio.run(
-            scan_file(ACCESS_LOG, WebLogParser(), orchestrator, [_Collector()])  # type: ignore[list-item]
-        )
-        assert result.events > 0
-        assert result.skipped_lines == 1  # the fixture carries one unreadable line on purpose
-        assert asyncio.run(verdict_log.recent()), "incidents must reach the audit trail"
+    orchestrator = build_orchestrator(settings, verdict_log)
+    result = asyncio.run(
+        scan_file(ACCESS_LOG, WebLogParser(), orchestrator, [_Collector()])  # type: ignore[list-item]
+    )
+    assert result.events > 0
+    assert result.skipped_lines == 1  # the fixture carries one unreadable line on purpose
+    assert verdict_log.reports, "incidents must reach the audit trail"
     return collected
 
 

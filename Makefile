@@ -3,7 +3,6 @@
 # call the underlying commands directly.
 
 PY ?= python
-DB ?= talos.db
 CHECKS := $(PY) tools/checks/run_all_checks.py
 
 .DEFAULT_GOAL := help
@@ -48,8 +47,8 @@ gate:  ## the phase gate: adds the R3.5 test-mirror requirement
 	$(PY) -m mypy
 	$(PY) -m pytest
 
-migrate:  ## apply database migrations in timestamp order (DB=talos.db)
-	$(PY) scripts/apply_migrations.py --db $(DB)
+migrate:  ## apply PostgreSQL migrations in timestamp order (DSN from TALOS_DB_DSN)
+	$(PY) scripts/apply_migrations.py
 
 run: migrate  ## scan a log file through the pipeline (FILE=path/to.log)
-	$(PY) -m talos.cli.main_cli scan $(FILE) --db $(DB)
+	$(PY) -m talos.cli.main_cli scan $(FILE)

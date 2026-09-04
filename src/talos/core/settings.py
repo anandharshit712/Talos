@@ -27,7 +27,14 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import dotenv_values, load_dotenv
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -114,12 +121,54 @@ class RateConfidenceSettings(_Block):
     """Floor applied when the burst was followed by a successful authentication."""
 
 
+class DatabaseSettings(_Block):
+    """How to reach PostgreSQL, without ever holding the credentials (LLD 16.5).
+
+    Only the *name* of the variable carrying the DSN lives here, exactly as
+    :class:`ProviderProfile` holds ``api_key_env`` rather than a key. A DSN carries a password,
+    so a DSN in the YAML tree is a password in git.
+    """
+
+    dsn_env: str = Field(default="TALOS_DB_DSN", min_length=1)
+    """Environment variable holding the connection string -- never the string itself."""
+
+    pool_min_size: int = Field(default=1, ge=1)
+    pool_max_size: int = Field(default=10, ge=1)
+    connect_timeout_seconds: float = Field(default=10.0, gt=0)
+    command_timeout_seconds: float = Field(default=30.0, gt=0)
+
+    @model_validator(mode="after")
+    def _pool_bounds_ordered(self) -> DatabaseSettings:
+        if self.pool_max_size < self.pool_min_size:
+            raise ValueError(
+                f"pool_max_size ({self.pool_max_size}) is below "
+                f"pool_min_size ({self.pool_min_size})"
+            )
+        return self
+
+    def resolve_dsn(self) -> str:
+        """The DSN from the environment. Raises :class:`ConfigError` when it is not set.
+
+        Failing here is the point: a process that cannot reach its audit trail must not start
+        and quietly detect into nothing (fail-safe for reporting).
+        """
+        dsn = os.environ.get(self.dsn_env, "").strip()
+        if not dsn:
+            raise ConfigError(
+                f"{self.dsn_env} is not set -- Talos stores incidents in PostgreSQL from P6. "
+                f"Put the DSN in .env, e.g. {self.dsn_env}=postgresql://talos@localhost:5432/talos"
+            )
+        return dsn
+
+
 class StorageSettings(_Block):
-    """Bounds on the in-memory event window (LLD 12, NFR-7)."""
+    """Bounds on the in-memory event window (LLD 12, NFR-7), and where incidents persist."""
 
     event_window_ttl_seconds: int = Field(default=900, gt=0)
     event_window_max_events: int = Field(default=2000, gt=0)
     """Per key, not in total -- one noisy source must not evict every other key."""
+
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
 
 class DetectionSettings(_Block):
@@ -355,7 +404,6 @@ class TalosSettings(BaseSettings):
     # holding its key, declared under talos.providers and read by the router (LLD 8.1). Keeping
     # a second copy of that here is how the two drift apart.
 
-    db_path: Path = Path("talos.db")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("enabled_domains")

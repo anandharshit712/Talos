@@ -45,18 +45,41 @@ is a `ConfigError`.
 - one file per incident, directory created on demand
 - an unwritable destination raises `StorageError` instead of dropping the report
 
-**Audit trail** (`test_verdict_log_store.py`)
+**Audit trail — statement level** (`test_verdict_log_store.py`, no server needed)
 
-- reports round-trip through SQLite unchanged; unknown ids return `None`
-- `recent()` is newest-first; re-appending an incident replaces it
-- a database without migrations raises `StorageError` naming the fix
-- the migration creates `verdict_log` and the `schema_migrations` ledger
+- `append` emits `ON CONFLICT (incident_id) DO UPDATE`, with the columns in declaration order
+- the report is stored verbatim and parses back into an identical `IncidentReport`
+- `created_at` is passed as a tz-aware `datetime`, not an ISO string — the column is `timestamptz`
+- `recent()` orders newest-first and honours its limit; unknown ids return `None`
+- a database without migrations raises `StorageError` naming `--engine postgres`
+
+**Connection pool** (`test_postgres_connection_pool.py`)
+
+- construction opens nothing; the pool is created on first `start()` or `acquire()`
+- `start()` is idempotent; `close()` before any start is harmless; a closed pool reopens fresh
+- configured bounds and timeouts reach the driver
+- a refused connection and a mid-statement driver failure both surface as `StorageError`
+- `from_settings` reads the variable named by `dsn_env`; a missing one raises `ConfigError`
+  naming both the variable and `.env`
+
+**Audit trail — live server** (`tests/integration/test_verdict_log_postgres.py`)
+
+Skipped unless `TALOS_TEST_DB_DSN` is set; a separate variable from `TALOS_DB_DSN` so the suite
+can never write into the database an operator is using.
+
+- reports round-trip through PostgreSQL unchanged; unknown ids return `None`
+- `recent()` is newest-first; re-appending an escalated incident replaces it
+- twenty concurrent appends over one pool all land — the shape SQLite's database-wide write lock
+  could not serve, and the reason the engine changed
+- `report_json @> '{...}'::jsonb` matches, so the GIN index indexes something queryable
 
 **CLI** (`test_main_cli.py`)
 
 - scanning the fixture prints an incident on stdout and a summary on stderr
 - reports land in the JSON sink directory
 - missing file exits 2; unmigrated database exits 1 naming `apply_migrations`
+- an unset `TALOS_DB_DSN` exits 1 naming the variable — no audit trail, no scan
+- `--dsn` overrides the environment; otherwise the DSN comes from the configured variable
 - an unknown sink in config is skipped, not fatal
 
 ## Latest observed results

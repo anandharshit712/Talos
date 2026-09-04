@@ -301,6 +301,7 @@ The `<role>` suffix comes from this **closed vocabulary**, matching the architec
 | `_rules` | pattern / rule tables |
 | `_baseliner`, `_scorer` | baseline construction, deviation scoring |
 | `_store` | persistence |
+| `_pool` | a managed set of reusable connections or workers, shared by stores |
 | `_client` | outbound integration |
 | `_router` | resolution/dispatch (e.g. model routing) |
 | `_server`, `_routes` | HTTP app factory, endpoint groups |

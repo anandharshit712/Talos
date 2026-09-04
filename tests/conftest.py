@@ -185,6 +185,16 @@ class RecordingVerdictLog:
         self.reports.append(report)
 
 
+@pytest.fixture
+def verdict_log() -> RecordingVerdictLog:
+    """The audit trail as an in-memory double.
+
+    From P6 the real store speaks to PostgreSQL, so a test that wants the pipeline -- not the
+    database -- takes this instead. The live round-trip lives in tests/integration/.
+    """
+    return RecordingVerdictLog()
+
+
 class NullBaselineStore:
     """Cold start for every account -- the P6 store is not built yet."""
 

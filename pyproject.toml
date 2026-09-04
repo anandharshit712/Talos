@@ -21,6 +21,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "httpx>=0.27",
+    # PostgreSQL from P6 (HLD 7.1). asyncpg rather than psycopg because the store Protocols
+    # are async and asyncpg's pool replaces dead connections without a reconnect layer here.
+    "asyncpg>=0.29",
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
 ]
@@ -92,6 +95,12 @@ show_error_codes = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+# asyncpg ships no py.typed marker, so its symbols arrive as Any. Confined to the two storage
+# modules that touch the driver; nothing above them sees an untyped value.
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
