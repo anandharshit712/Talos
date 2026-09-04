@@ -27,7 +27,7 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 | **P4** Web injection | D7–D9 | Aug 24–26 | **done** | yes | yes |
 | **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | **done** | yes | yes |
 | **P6** Broken access control | D12–D14 | — | **done** | yes | yes |
-| **P7** Output surface | D15 | — | **done** | yes | — |
+| **P7** Output surface | D15 | — | **done** | yes | yes |
 | **P8** Evaluation & calibration | D16–D17 | — | not started | — | — |
 | **P9** Demo & submission | D18 | — | not started | — | — |
 
