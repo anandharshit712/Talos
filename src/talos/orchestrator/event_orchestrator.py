@@ -11,6 +11,8 @@ verdicts are final.
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
+from datetime import datetime, timedelta
 
 from talos.core.agent_contracts import DetectionContext
 from talos.orchestrator.agent_registry import AgentRegistry
@@ -20,10 +22,8 @@ from talos.schemas.report_schema import IncidentReport
 
 _log = logging.getLogger(__name__)
 
-#: How many incident signatures the duplicate filter remembers.
-# ponytail: a plain dict with a size cap. Swap for a TTL map if a long-running process ever
-# shows this evicting signatures that are still active.
-MAX_TRACKED_INCIDENTS = 2048
+#: One remembered incident: when it was last reported (event time), and what it looked like.
+_Reported = tuple[datetime, int, bool]
 
 
 class EventOrchestrator:
@@ -35,8 +35,14 @@ class EventOrchestrator:
         self.registry = registry
         self.aggregator = aggregator
         self.ctx = ctx
-        self._reported: dict[tuple[str, ...], tuple[int, bool]] = {}
-        """Incident signature -> (attempt count, succeeded) as last reported."""
+        self._reported: OrderedDict[tuple[str, ...], _Reported] = OrderedDict()
+        """Signature -> (event time, attempt count, succeeded) as last reported.
+
+        A TTL map, and ordered so eviction takes the oldest rather than everything. The
+        previous version cleared the whole dict when it hit its cap, which on a long-running
+        server means a burst of unrelated signatures wipes the memory of an attack still in
+        progress -- and every one of those attacks then re-alerts.
+        """
 
     async def submit(self, event: NormalizedEvent) -> IncidentReport | None:
         """Process one event. ``None`` means nothing fired -- not an empty incident."""
@@ -103,15 +109,33 @@ class EventOrchestrator:
         attempts = scope.attempt_count or 0
         succeeded = bool(scope.succeeded)
 
+        now = scope.window_end or report.created_at
+        self._forget_expired(now, settings.suppression_ttl_seconds)
+
         previous = self._reported.get(signature)
         escalated = previous is None or (
-            (succeeded and not previous[1])
-            or attempts >= previous[0] * settings.escalation_attempt_factor
+            (succeeded and not previous[2])
+            or attempts >= previous[1] * settings.escalation_attempt_factor
         )
         if not escalated:
             return True
 
-        if len(self._reported) >= MAX_TRACKED_INCIDENTS:
-            self._reported.clear()
-        self._reported[signature] = (attempts, succeeded)
+        self._remember(signature, (now, attempts, succeeded), settings.max_tracked_incidents)
         return False
+
+    def _forget_expired(self, now: datetime, ttl_seconds: int) -> None:
+        """Drop signatures older than the TTL, in event time.
+
+        Event time, not wall clock, for the same reason the event window uses it: replaying a
+        historical log then behaves exactly like reading a live stream.
+        """
+        cutoff = now - timedelta(seconds=ttl_seconds)
+        for signature in [key for key, value in self._reported.items() if value[0] < cutoff]:
+            del self._reported[signature]
+
+    def _remember(self, signature: tuple[str, ...], state: _Reported, cap: int) -> None:
+        """Record a reported incident, evicting the **oldest** entry if the cap is reached."""
+        self._reported[signature] = state
+        self._reported.move_to_end(signature)
+        while len(self._reported) > cap:
+            self._reported.popitem(last=False)

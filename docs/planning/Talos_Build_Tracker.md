@@ -27,7 +27,7 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 | **P4** Web injection | D7–D9 | Aug 24–26 | **done** | yes | yes |
 | **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | **done** | yes | yes |
 | **P6** Broken access control | D12–D14 | — | **done** | yes | yes |
-| **P7** Output surface | D15 | — | not started | — | — |
+| **P7** Output surface | D15 | — | **done** | yes | — |
 | **P8** Evaluation & calibration | D16–D17 | — | not started | — | — |
 | **P9** Demo & submission | D18 | — | not started | — | — |
 
@@ -751,20 +751,78 @@ stores plus a live API.
 
 ---
 
-## P7 — Output Surface · D15
+## P7 — Output Surface · D15 — **done**
 
-- [ ] `output/api/api_server.py` (~120) — FastAPI factory
-- [ ] `output/api/report_routes.py` (~200) — `POST /events`, `GET /reports`, `GET /reports/{id}`,
-      `GET /healthz`
-- [ ] `cli/main_cli.py` (+100) — `scan`, `serve`, `replay`
-- [ ] `scripts/generate_sample_logs.py`, `scripts/replay_log_file.py` (~200 together)
-- [ ] `docs/features/report-api/` with `behaviour.md`
-- [ ] Tests: `TestClient` per route, malformed-event 422, report retrieval round-trip
-- [ ] **Gate:** `talos serve` accepts a posted event and returns a report; OpenAPI docs render
+- [x] `output/api/api_server.py` (117) — FastAPI factory. Builds the pipeline **once** at startup
+      and shares it: the event window and the duplicate filter are per-process state, so a
+      per-request pipeline would forget the burst it is halfway through detecting. Dependencies
+      can be supplied instead of provisioned, which is how the route tests run with no database
+- [x] `output/api/report_routes.py` (139) — `POST /events`, `GET /reports`,
+      `GET /reports/{incident_id}`, `GET /healthz`, plus the typed `TalosState`
+- [x] `cli/main_cli.py` — `serve` and `replay` added. `serve` binds **loopback by default** and
+      warns on any other address; `replay` streams a log file into a running server one event at
+      a time (concurrent sending would reorder events, and windowed detectors read order)
+- [x] `scripts/generate_sample_logs.py` (280) — eight reproducible corpora, **each attack paired
+      with the benign traffic it must be told apart from**. Fixed stamps, no randomness
+- [-] ~~`scripts/replay_log_file.py`~~ — **cut.** It duplicates `talos replay`; two
+      implementations of one job is what R3 exists to prevent, and standards §1.3 makes the
+      subcommand the entry point. Recorded in the feature's `design.md`
+- [x] `config`: `talos.output.api` (`host`, `port`, `recent_limit_max`),
+      `talos.storage.database.retention_days`, `talos.aggregation.suppression_ttl_seconds` and
+      `max_tracked_incidents`
+- [x] `docs/features/report-api/` with `behaviour.md` — every route, its statuses, error handling
+      and edge cases, plus the limitations and what would change each
+
+### P7.1 Open items closed
+
+- [x] **Suppression state was cleared wholesale when full.** `MAX_TRACKED_INCIDENTS` capped a
+      plain dict and hitting it wiped every signature — so on a long-running server a burst of
+      unrelated incidents erases the memory of an attack still in progress and every one of them
+      re-alerts. Now a TTL map in **event** time (matching the event window, so a replay behaves
+      like a live stream), ordered so eviction takes the oldest rather than everything
+- [x] **No retention policy on `verdict_log`.** `VerdictLogStore.prune()` plus a dated delete at
+      server startup; `0` keeps everything; a failed prune is logged and the service starts
+      anyway. A scan never prunes — deleting history as a side effect of reading a log file
+      would be indefensible
+
+### P7.2 Tests
+
+- [x] `TestClient` per route, 16 cases: the `204`-not-a-report rule, `422` **before** the
+      pipeline is reached, `503` rather than `200` when an incident cannot be recorded, the
+      clamped `limit`, the `404` naming the id, and `/healthz` degrading on a broken store
+- [x] Factory tests, 9 cases: construction opens no socket, supplied dependencies skip the
+      retention prune, `ConfigError` names `TALOS_DB_DSN`, `--dsn` beats the environment
+- [x] CLI tests for `serve` and `replay`, including the non-loopback warning and a rejected
+      event not abandoning the rest of the file
+- [x] `tests/integration/test_report_api_postgres.py` — the live gate
+
+### P7.3 Gate — **passed 2026-09-04**
+
+- [x] **`talos serve` accepts a posted event and returns a report.** Twelve SSH failures through
+      `POST /events` produce `network_brute_force` scoped to the account, `used_llm=false`; the
+      incident reads back through `GET /reports/{id}` with its evidence intact — two requests,
+      one row, which is what proves the API and the store agree
+- [x] **OpenAPI docs render.** `/openapi.json` names exactly the four routes; `/docs` returns 200
+- [x] Verified by hand against a real `talos serve` on port 8123, not only through `TestClient`:
+      `healthz` ok, `talos replay` of the SSH fixture produced 2 incidents over HTTP,
+      `GET /reports` listed them, an unknown id gave 404, a malformed body gave 422
+- [x] `run_all_checks.py --strict`, ruff, ruff format, mypy strict, **770 tests, 0 skipped** —
+      all green in 17 seconds
+
+### P7.4 Found while building
+
+- [x] **`POST /events` requires the caller to supply `event_id`.** Not a defect — the contract is
+      frozen and the caller is the only party that can correlate a report back to its own
+      telemetry — but it is a friction point a collector integration will hit, so it is stated
+      in `behaviour.md` rather than left to a 422.
+- [x] **The API is single-process by construction.** Two workers behind a load balancer would
+      each hold half the events, so a burst split between them might trip neither threshold.
+      That is a real deployment constraint, not a tuning note; the fix is a shared window and the
+      trigger is needing more than one process. Added to the open items.
 
 ---
 
-## P8 — Evaluation & Calibration · D16–D17 (Sep 2–3)
+## P8 — Evaluation & Calibration · D16–D17
 
 - [ ] `tests/e2e/metrics_harness.py` (~280) — precision / recall / F1, calibration buckets, latency
 - [ ] Full labeled corpus under `tests/fixtures/logs/` + `tests/fixtures/expected/`
@@ -806,7 +864,7 @@ sequence should a phase overrun badly enough to need it again.
    nothing at all *plus* a source-set heuristic, because a global window fires on fifteen
    unrelated people mistyping passwords. **Trigger:** P8 measurement against a real capture
    decides whether the false positives are affordable.
-4. [ ] FastAPI surface (P7)
+4. [-] ~~FastAPI surface (P7)~~ — built in full, gate passed 2026-09-04
 5. [-] ~~IDOR / broken access control (P6)~~ — built in full, gate passed 2026-09-04
 
 **Never cut:** the P2 walking skeleton, the P8 measured evaluation, the P9 pipeline-trace transparency.
@@ -821,11 +879,12 @@ sequence should a phase overrun badly enough to need it again.
 | NIM model IDs are placeholders | P1 | P3 | verify at `build.nvidia.com` **before** writing client code |
 | Fixture corpus not started | P0 | P8 | plan §8 says collect during downtime, not at P8 |
 | ~~`EventWindowStore` TTL/size knobs not in config~~ | P1 | **done P2** | `talos.storage` in `default.yaml` |
-| Suppression state is per-process, capped at 2048 signatures | P2 | P7 | fine for a scan; a long-running service wants a TTL map (`ponytail:` comment in `event_orchestrator.py`) |
+| ~~Suppression state is per-process, capped at 2048~~ | P2 | **done P7** | A TTL map in event time, ordered so eviction takes the oldest. The old cap cleared the whole dict, which on a server re-alerts every attack still in progress. Still per-process — see the single-process row below |
 | One incident per escalation, not per campaign | P2 | P8 | a burst that doubles re-reports; whether that is the right cadence is a calibration question |
+| **The API is single-process by construction** | P7 | P8+ | Two workers would each hold half the events, so a burst split between them might trip neither threshold. Not a tuning note — a deployment constraint. The fix is a shared event window (Redis, or the database); the trigger is needing more than one process |
 | Calibration curve values empty | P1 | P8 | shape fixed (`detector -> {parameter: float}`), values measured in P8 |
-| `EventWindowStore` is RAM-only | P2 | P7 | a restart mid-burst loses every in-flight window, so the detector forgets an attack in progress. Fix is persistence or replay-on-start; neither belongs in P6 |
-| No retention policy on `verdict_log` | P2 | P7 | the incident log grows without bound. Now cheap — PostgreSQL is in place, so a partition or a dated delete on `created_at` will do; decide the window first |
+| `EventWindowStore` is RAM-only | P2 | **P8 decision** | A restart mid-burst loses in-flight windows, so a burst resumes counting from zero. **Deliberately not fixed in P7**: persisting every event on the hot path, or replaying history at startup, is larger than the surface it protects, and the cost is a delayed verdict rather than a wrong one. Trigger: P8 measurement showing restarts affect recall, or a deployment where restarts are routine |
+| ~~No retention policy on `verdict_log`~~ | P2 | **done P7** | `VerdictLogStore.prune()` and a dated delete at server startup, `talos.storage.database.retention_days` (90; `0` keeps everything). Partitioning is the upgrade if the table outgrows it |
 | ~~Stores hold one connection, no reconnect~~ | P2 | **done P6.0** | Closed by `postgres_connection_pool.py`: asyncpg replaces a dead connection on the next acquire |
 | ~~`db_path` is a file path, not a DSN~~ | P1 | **done P6.0** | `db_path` deleted; `talos.storage.database.dsn_env` names the variable and `talos scan --dsn` replaces `--db` |
 | ~~SQLite dialect still in `src/`~~ | P2 | **done P6.0** | `src/` imports `asyncpg` only; the SQLite set survives under `db/migrations/` as forward-only history |
@@ -836,6 +895,7 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.13 | 2026-09-04 | **P7 recorded as done.** Four routes, `talos serve` and `talos replay`, the sample-log generator, and two open items closed — the suppression filter that cleared itself when full, and the missing retention policy. `scripts/replay_log_file.py` cut as a duplicate of the subcommand. |
 | 1.12 | 2026-09-04 | **P6 recorded as done.** IDOR detection with object-level scope, the paired benign corpus producing nothing, and the four things building it exposed — including a CLI test suite that had been making live inference calls, and three routed models that had died. |
 | 1.11 | 2026-09-04 | Storage gate passed against live PostgreSQL 17.2: 672 tests, 0 skipped, concurrent writers clean, `talos scan` writing real incidents. Two defects the live run exposed — migrations ordered by filename rather than stamp, and a pool shared across event loops. |
 | 1.10 | 2026-09-04 | P6.1 recorded as done: the access baseline, its bounded update rule, and the store with per-account advisory locking. The redundant index on `account` cut. |

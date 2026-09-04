@@ -174,6 +174,13 @@ class DatabaseSettings(_Block):
     connect_timeout_seconds: float = Field(default=10.0, gt=0)
     command_timeout_seconds: float = Field(default=30.0, gt=0)
 
+    retention_days: int = Field(default=90, ge=0)
+    """Age at which recorded incidents are pruned on server start. ``0`` keeps them forever.
+
+    The incident log grows without bound otherwise, which was survivable for a scan and is not
+    for a service. A dated delete is enough at this size; partitioning is the answer if the
+    table ever outgrows it."""
+
     @model_validator(mode="after")
     def _pool_bounds_ordered(self) -> DatabaseSettings:
         if self.pool_max_size < self.pool_min_size:
@@ -235,6 +242,16 @@ class AggregationSettings(_Block):
     corroboration_boost: float = Field(default=0.05, ge=0.0, le=1.0)
     """Added to the top confidence for each *additional* detector that fired independently."""
 
+    suppression_ttl_seconds: int = Field(default=3600, gt=0)
+    """How long a reported incident stays suppressed, measured in **event** time.
+
+    Measured in event time, not wall clock, so replaying a historical log suppresses exactly as
+    reading a live stream does. Without a TTL the filter has to forget by capacity instead,
+    which means a burst of unrelated signatures drops the memory of an attack still in progress.
+    """
+    max_tracked_incidents: int = Field(default=2048, gt=0)
+    """Hard cap on remembered signatures, so a long-running server cannot grow without limit."""
+
     suppress_duplicates: bool = True
     """Report an ongoing attack once, not once per event past the threshold.
 
@@ -260,9 +277,21 @@ class LlmSettings(_Block):
     max_payload_chars: int = Field(default=2000, gt=0)
 
 
+class ApiSettings(_Block):
+    """Where the report API listens (LLD 2.1, P7)."""
+
+    host: str = Field(default="127.0.0.1", min_length=1)
+    """Loopback by default. Talos has no authentication, so binding 0.0.0.0 publishes an
+    unauthenticated incident feed onto the network -- a deliberate choice, never a default."""
+    port: int = Field(default=8000, ge=1, le=65535)
+    recent_limit_max: int = Field(default=200, gt=0)
+    """Ceiling on ``GET /reports?limit=`` so one request cannot ask for the whole table."""
+
+
 class OutputSettings(_Block):
     sinks: list[str] = Field(default_factory=lambda: ["stdout", "json_file"])
     report_dir: Path = Path("out/reports")
+    api: ApiSettings = Field(default_factory=ApiSettings)
 
 
 class ProviderProfile(_Block):

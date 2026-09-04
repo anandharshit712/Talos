@@ -75,6 +75,16 @@ python scripts/apply_migrations.py
 talos scan tests/fixtures/logs/network_ssh_brute_force_sshd.log --pretty
 ```
 
+Or run it as a service and replay a log file into it:
+
+```bash
+talos serve                       # http://127.0.0.1:8000, OpenAPI at /docs
+talos replay tests/fixtures/logs/network_ssh_brute_force_sshd.log --year 2026
+```
+
+`talos serve` binds loopback by default. Talos has no authentication, so any other bind address
+publishes an unauthenticated incident feed -- `--host 0.0.0.0` works and says so in the log.
+
 Reports go to stdout as JSON and to `out/reports/`; diagnostics and the run summary go to stderr,
 so `talos scan file.log | jq` works unfiltered. The fixture above produces two incidents — the
 brute-force burst crossing its threshold, then the escalation when a login finally succeeds:

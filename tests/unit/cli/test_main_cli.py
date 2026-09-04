@@ -168,3 +168,133 @@ def test_scan_loads_the_env_file_before_building_the_router(
     main(["scan", str(SSH_LOG), "--year", "2026"])
 
     assert calls, "the CLI ran without loading .env"
+
+
+# --- serve ------------------------------------------------------------------------------------
+
+
+def test_serve_uses_the_configured_host_and_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    served: dict[str, Any] = {}
+
+    def fake_run(app: Any, **kwargs: Any) -> None:
+        served.update(kwargs)
+
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
+    monkeypatch.setattr("uvicorn.run", fake_run)
+    monkeypatch.setattr("talos.output.api.api_server.create_app", lambda *a, **k: object())
+
+    assert main(["serve"]) == 0
+    assert served["host"] == "127.0.0.1"
+    assert served["port"] == 8000
+
+
+def test_serve_flags_beat_the_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    served: dict[str, Any] = {}
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: served.update(kwargs))
+    monkeypatch.setattr("talos.output.api.api_server.create_app", lambda *a, **k: object())
+
+    main(["serve", "--host", "0.0.0.0", "--port", "9001"])
+
+    assert served["host"] == "0.0.0.0"
+    assert served["port"] == 9001
+
+
+def test_binding_a_public_address_warns(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Talos has no authentication, so this publishes an unauthenticated incident feed.
+
+    Asserted on stderr rather than through ``caplog``: ``configure_logging`` installs the JSON
+    handler the operator actually reads, and that is the output worth pinning.
+    """
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: None)
+    monkeypatch.setattr("talos.output.api.api_server.create_app", lambda *a, **k: object())
+
+    main(["serve", "--host", "0.0.0.0"])
+
+    assert "no authentication" in capsys.readouterr().err
+
+
+# --- replay -----------------------------------------------------------------------------------
+
+
+def test_replay_posts_every_parsed_event_and_counts_the_incidents(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    posted: list[str] = []
+
+    class FakeResponse:
+        def __init__(self, status_code: int) -> None:
+            self.status_code = status_code
+            self.is_success = 200 <= status_code < 300
+
+        def json(self) -> dict[str, Any]:
+            return {"incident_id": "abc", "summary": "a burst"}
+
+    class FakeClient:
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def post(self, url: str, **kwargs: Any) -> FakeResponse:
+            posted.append(url)
+            # One incident, then nothing -- the ordinary shape of a replay.
+            return FakeResponse(200 if len(posted) == 1 else 204)
+
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
+    monkeypatch.setattr("httpx.Client", FakeClient)
+
+    exit_code = main(["replay", str(SSH_LOG), "--year", "2026", "--url", "http://localhost:9999"])
+
+    assert exit_code == 0
+    assert posted and all(url == "http://localhost:9999/events" for url in posted)
+    captured = capsys.readouterr()
+    assert "1 incident(s)" in captured.err
+    assert "abc" in captured.out
+
+
+def test_replay_reports_a_rejected_event_without_stopping(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 422 on one line must not abandon the rest of the file."""
+
+    class FakeResponse:
+        status_code = 422
+        is_success = False
+
+        def json(self) -> dict[str, Any]:
+            return {}
+
+    class FakeClient:
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        def __enter__(self) -> FakeClient:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def post(self, url: str, **kwargs: Any) -> FakeResponse:
+            return FakeResponse()
+
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
+    monkeypatch.setattr("httpx.Client", FakeClient)
+
+    assert main(["replay", str(SSH_LOG), "--year", "2026"]) == 0
+
+    captured = capsys.readouterr()
+    assert "rejected an event" in captured.err
+    assert "0 incident(s)" in captured.err
+
+
+def test_replay_of_a_missing_file_exits_two(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["replay", "no-such-file.log"]) == 2
+    assert "no such log file" in capsys.readouterr().err

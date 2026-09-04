@@ -102,6 +102,27 @@ class VerdictLogStore:
             )
         return None if row is None else IncidentReport.model_validate_json(row)
 
+    async def prune(self, older_than_days: int) -> int:
+        """Delete incidents older than ``older_than_days``; return how many went.
+
+        ``0`` keeps everything, which is the honest reading of "no retention policy" and stays
+        available for anyone who needs the full history. Called on server start rather than on a
+        timer: a scan should not delete anything, and one dated delete at startup is enough at
+        this size. Partitioning is the answer if the table ever outgrows it.
+        """
+        if older_than_days <= 0:
+            return 0
+        async with self._pool.acquire() as connection:
+            status = await _guarded(
+                connection.execute(
+                    f"DELETE FROM {TABLE_NAME} "
+                    f"WHERE created_at < now() - make_interval(days => $1)",
+                    older_than_days,
+                )
+            )
+        # asyncpg returns the command tag, e.g. "DELETE 12".
+        return int(str(status).rsplit(" ", 1)[-1] or 0)
+
     async def recent(self, limit: int = 50) -> list[IncidentReport]:
         """The newest incidents first. Backs the report listing endpoint (P7)."""
         async with self._pool.acquire() as connection:
