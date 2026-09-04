@@ -6,7 +6,11 @@ rows into the database an operator is actually using.
 
     $env:TALOS_TEST_DB_DSN = "postgresql://talos:...@localhost:5432/talos_test"
     python scripts/apply_migrations.py --dsn $env:TALOS_TEST_DB_DSN
-    python -m pytest tests/integration -m integration
+    python -m pytest tests/integration
+
+**One ``asyncio.run`` per test, and the pool lives inside it.** An asyncpg connection belongs to
+the event loop that created it, so a pool opened in one ``asyncio.run`` cannot be borrowed from
+the next -- the pool says so plainly rather than failing inside the driver.
 
 Testcontainers is not an option here -- it needs Docker, which this cycle excludes (plan scope
 note). CI provisions PostgreSQL as a GitHub Actions service instead.
@@ -17,7 +21,8 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import pytest
 
@@ -37,11 +42,12 @@ pytestmark = [
 
 #: Every row this module writes carries the run id, so cleanup never touches anyone else's data.
 RUN_ID = uuid.uuid4().hex[:8]
+PREFIX = f"it-{RUN_ID}-"
 
 
 def _report(verdict: Verdict, suffix: str) -> IncidentReport:
     return IncidentReport(
-        incident_id=f"it-{RUN_ID}-{suffix}",
+        incident_id=f"{PREFIX}{suffix}",
         domain=verdict.domain,
         category=verdict.category,
         summary="12 failed ssh logins for root@bastion-01",
@@ -52,105 +58,110 @@ def _report(verdict: Verdict, suffix: str) -> IncidentReport:
     )
 
 
-@pytest.fixture
-def store() -> Iterator[VerdictLogStore]:
-    """A store on the live server, with this run's rows removed afterwards."""
+@asynccontextmanager
+async def opened_store() -> AsyncIterator[tuple[VerdictLogStore, PostgresConnectionPool]]:
+    """A store on the live server for the life of one event loop, its rows removed after."""
     pool = PostgresConnectionPool(DSN, DatabaseSettings())
     try:
-        yield VerdictLogStore(pool)
+        yield VerdictLogStore(pool), pool
     finally:
-
-        async def cleanup() -> None:
-            async with pool.acquire() as connection:
-                await connection.execute(
-                    "DELETE FROM verdict_log WHERE incident_id LIKE $1", f"it-{RUN_ID}-%"
-                )
-            await pool.close()
-
-        asyncio.run(cleanup())
+        async with pool.acquire() as connection:
+            await connection.execute(
+                "DELETE FROM verdict_log WHERE incident_id LIKE $1", f"{PREFIX}%"
+            )
+        await pool.close()
 
 
-def test_report_round_trips_through_postgres(
-    store: VerdictLogStore, sample_verdict: Verdict
-) -> None:
-    report = _report(sample_verdict, "round-trip")
-    asyncio.run(store.append(report))
-    assert asyncio.run(store.get(report.incident_id)) == report
+def test_report_round_trips_through_postgres(sample_verdict: Verdict) -> None:
+    async def body() -> None:
+        async with opened_store() as (store, _):
+            report = _report(sample_verdict, "round-trip")
+            await store.append(report)
+            assert await store.get(report.incident_id) == report
+
+    asyncio.run(body())
 
 
-def test_unknown_incident_is_none(store: VerdictLogStore) -> None:
-    assert asyncio.run(store.get(f"it-{RUN_ID}-never-written")) is None
+def test_unknown_incident_is_none() -> None:
+    async def body() -> None:
+        async with opened_store() as (store, _):
+            assert await store.get(f"{PREFIX}never-written") is None
+
+    asyncio.run(body())
 
 
-def test_reappending_the_same_incident_replaces_it(
-    store: VerdictLogStore, sample_verdict: Verdict
-) -> None:
+def test_reappending_the_same_incident_replaces_it(sample_verdict: Verdict) -> None:
     """ON CONFLICT DO UPDATE: an escalated re-report overwrites, it does not duplicate or raise."""
-    report = _report(sample_verdict, "escalating")
-    asyncio.run(store.append(report))
-    asyncio.run(store.append(report.model_copy(update={"severity": "critical"})))
 
-    stored = asyncio.run(store.get(report.incident_id))
-    assert stored is not None
-    assert stored.severity == "critical"
+    async def body() -> None:
+        async with opened_store() as (store, _):
+            report = _report(sample_verdict, "escalating")
+            await store.append(report)
+            await store.append(report.model_copy(update={"severity": "critical"}))
 
+            stored = await store.get(report.incident_id)
+            assert stored is not None
+            assert stored.severity == "critical"
 
-def test_recent_returns_newest_first(store: VerdictLogStore, sample_verdict: Verdict) -> None:
-    older = _report(sample_verdict, "older")
-    newer = _report(sample_verdict, "newer").model_copy(
-        update={"created_at": older.created_at.replace(year=older.created_at.year + 1)}
-    )
-    asyncio.run(store.append(older))
-    asyncio.run(store.append(newer))
+            ours = [r for r in await store.recent(limit=200) if r.incident_id == report.incident_id]
+            assert len(ours) == 1
 
-    ours = [
-        report.incident_id
-        for report in asyncio.run(store.recent(limit=200))
-        if report.incident_id.startswith(f"it-{RUN_ID}-")
-    ]
-    assert ours.index(newer.incident_id) < ours.index(older.incident_id)
+    asyncio.run(body())
 
 
-def test_concurrent_writers_do_not_block_each_other(
-    store: VerdictLogStore, sample_verdict: Verdict
-) -> None:
+def test_recent_returns_newest_first(sample_verdict: Verdict) -> None:
+    async def body() -> None:
+        async with opened_store() as (store, _):
+            older = _report(sample_verdict, "older")
+            newer = _report(sample_verdict, "newer").model_copy(
+                update={"created_at": older.created_at.replace(year=older.created_at.year + 1)}
+            )
+            await store.append(older)
+            await store.append(newer)
+
+            ours = [
+                report.incident_id
+                for report in await store.recent(limit=200)
+                if report.incident_id.startswith(PREFIX)
+            ]
+            assert ours.index(newer.incident_id) < ours.index(older.incident_id)
+
+    asyncio.run(body())
+
+
+def test_concurrent_writers_do_not_block_each_other(sample_verdict: Verdict) -> None:
     """The reason the engine changed: SQLite's write lock is database-wide, PostgreSQL's is not.
 
     Twenty simultaneous appends over a pool is the shape ``BaselineStore``'s per-account
-    read-modify-write needs in P6.1, and the shape SQLite could not serve.
+    read-modify-write needs, and the shape SQLite could not serve.
     """
-    reports = [_report(sample_verdict, f"concurrent-{index}") for index in range(20)]
 
-    async def append_all() -> None:
-        await asyncio.gather(*(store.append(report) for report in reports))
+    async def body() -> None:
+        async with opened_store() as (store, _):
+            reports = [_report(sample_verdict, f"concurrent-{index}") for index in range(20)]
+            await asyncio.gather(*(store.append(report) for report in reports))
 
-    asyncio.run(append_all())
+            written = {report.incident_id for report in await store.recent(limit=200)}
+            assert {report.incident_id for report in reports} <= written
 
-    stored = asyncio.run(store.recent(limit=200))
-    written = {report.incident_id for report in stored}
-    assert {report.incident_id for report in reports} <= written
+    asyncio.run(body())
 
 
-def test_jsonb_column_is_queryable_not_just_stored(
-    store: VerdictLogStore, sample_verdict: Verdict
-) -> None:
+def test_jsonb_column_is_queryable_not_just_stored(sample_verdict: Verdict) -> None:
     """jsonb rather than text: the GIN index only pays off if containment actually matches."""
-    report = _report(sample_verdict, "queryable")
-    asyncio.run(store.append(report))
 
-    async def find_by_category() -> int:
-        pool = PostgresConnectionPool(DSN, DatabaseSettings())
-        try:
+    async def body() -> None:
+        async with opened_store() as (store, pool):
+            report = _report(sample_verdict, "queryable")
+            await store.append(report)
+
             async with pool.acquire() as connection:
-                return int(
-                    await connection.fetchval(
-                        "SELECT count(*) FROM verdict_log "
-                        "WHERE incident_id = $1 AND report_json @> $2::jsonb",
-                        report.incident_id,
-                        f'{{"category": "{report.category}"}}',
-                    )
+                matched = await connection.fetchval(
+                    "SELECT count(*) FROM verdict_log "
+                    "WHERE incident_id = $1 AND report_json @> $2::jsonb",
+                    report.incident_id,
+                    f'{{"category": "{report.category}"}}',
                 )
-        finally:
-            await pool.close()
+            assert matched == 1
 
-    assert asyncio.run(find_by_category()) == 1
+    asyncio.run(body())

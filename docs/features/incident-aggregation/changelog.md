@@ -1,5 +1,24 @@
 # Changelog — Incident Aggregation and Output
 
+## 2026-09-04 — the storage gate, measured against a live server
+
+- **672 tests, 0 skipped, against PostgreSQL 17.2.** Every prior run skipped the 27 integration
+  tests, so this is the first time the storage layer was measured rather than asserted.
+  `talos scan` on the SSH fixture wrote two real incidents; verified in the database that
+  `report_json` is `jsonb`, GIN containment matches it, and `created_at` kept its microseconds.
+- **Fixed: migrations were ordered by filename, not by stamp.** `sorted(glob("*.sql"))` sorts the
+  whole name, so `create_access_baseline_..._105455` ran before
+  `create_verdict_log_..._091113` because "access" precedes "verdict" — while standards §4.3 says
+  the timestamp is the ordering key. Harmless for two independent tables, wrong the first time a
+  `CREATE` and its later `ALTER` appear. Latent since P2 and invisible while there was one
+  migration. `scripts/apply_migrations.py` now sorts on the extracted stamp and refuses a file
+  without one; `tests/unit/scripts/test_apply_migrations.py` is new — the runner had no test file
+  at all, which is why nothing caught this.
+- **Fixed: the pool could be shared across event loops.** asyncpg reports that as "another
+  operation is in progress", which names nothing; it produced 9 failures and 12 errors on the
+  first live run. `PostgresConnectionPool` now records the loop it opened on and raises a
+  `StorageError` saying so. One pool per loop, one loop per process.
+
 ## 2026-09-04 — the audit trail moves to PostgreSQL (P6.0)
 
 - `VerdictLogStore` now speaks `asyncpg`. `INSERT OR REPLACE` became

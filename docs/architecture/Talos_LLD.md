@@ -913,5 +913,12 @@ until P6.0 ports them (HLD §7.1 stages SQLite through P5), and `asyncpg` is not
 | **`talos.detection.idor.max_seen_object_ids` / `max_endpoints`** | §7.4, §10 | The baseline row is read and rewritten on the per-event hot path, so it has to be bounded. Endpoint eviction excludes the endpoint just counted: on a full baseline it is the least-used by definition, and evicting it would mean `novel_endpoint` — one of the four deviation features — could never be learned. |
 | **No separate index on `access_baseline.account`** | §4.2 | The plan listed one; the column is the primary key, which already provides a unique index. The migration adds `idx_access_baseline_updated_at` instead, for the one query that is not by key. |
 
+### 16.12 Revision 1.12 — two defects the live database exposed (2026-09-04)
+
+| Change | Where | Why |
+|---|---|---|
+| **`apply_migrations` orders by the filename stamp, not the filename** | §4.2, standards §4.3 | `sorted(glob("*.sql"))` sorts on the whole name, so subject beat timestamp: `create_access_baseline_..._105455` ran before `create_verdict_log_..._091113` because "access" precedes "verdict". Standards §4.3 states the timestamp *is* the ordering key; it was not. Harmless for two independent tables, wrong the first time a `CREATE` and its later `ALTER` appear. Latent since P2 and invisible while one migration existed. A malformed name is now refused rather than silently ordered by name, and the runner has a test file for the first time. |
+| **`PostgresConnectionPool` refuses use from another event loop** | §12 | An asyncpg connection belongs to the loop that created it; borrowing one from a second `asyncio.run` fails inside the driver as "another operation is in progress", which names neither the pool nor the loop. The pool records its loop at `start()` and raises a `StorageError` naming the cause. One pool per loop, one loop per process, is now stated and enforced rather than assumed. |
+
 ---
 *End of LLD.*

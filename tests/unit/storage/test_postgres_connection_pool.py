@@ -157,3 +157,40 @@ def test_a_missing_dsn_names_the_variable_and_the_file(monkeypatch: pytest.Monke
 
     assert "TALOS_TEST_DSN" in str(caught.value)
     assert ".env" in str(caught.value)
+
+
+def test_a_pool_borrowed_from_another_loop_says_so(created: list[dict[str, Any]]) -> None:
+    """An asyncpg connection belongs to the loop that created it.
+
+    Using one from a second ``asyncio.run`` fails deep in the driver as "another operation is in
+    progress", which names nothing -- the mistake the first version of the integration suite
+    made, and it cost a debugging cycle to read. The pool checks the loop and says what is wrong.
+    """
+    pool = PostgresConnectionPool(DSN, DatabaseSettings())
+    asyncio.run(pool.start())
+
+    async def borrow() -> None:
+        async with pool.acquire():
+            pass
+
+    with pytest.raises(StorageError) as caught:
+        asyncio.run(borrow())
+    assert "different event loop" in str(caught.value)
+
+
+def test_closing_and_reopening_clears_the_remembered_loop(created: list[dict[str, Any]]) -> None:
+    """Otherwise a process that closed its pool could never open another one."""
+    pool = PostgresConnectionPool(DSN, DatabaseSettings())
+
+    async def open_and_close() -> None:
+        await pool.start()
+        await pool.close()
+
+    async def open_and_use() -> None:
+        async with pool.acquire():
+            pass
+
+    asyncio.run(open_and_close())
+    asyncio.run(open_and_use())  # a fresh loop, a fresh pool -- no error
+
+    assert len(created) == 2

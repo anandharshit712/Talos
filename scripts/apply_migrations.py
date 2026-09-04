@@ -65,9 +65,27 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
 """
 
 
+def migration_stamp(path: Path) -> str:
+    """The ``YYYYMMDD_HHMMSS`` stamp a migration filename ends in (R4.1)."""
+    parts = path.stem.rsplit("_", 2)
+    if len(parts) != 3:
+        raise SystemExit(
+            f"{path.name}: no _YYYYMMDD_HHMMSS stamp, so its order is undefined (R4.1). "
+            f"Run tools/checks/check_naming.py"
+        )
+    return f"{parts[1]}_{parts[2]}"
+
+
 def migration_files(directory: Path | None = None) -> list[Path]:
-    """Forward migrations, chronologically -- the stamp makes lexical order chronological."""
-    return sorted((directory or MIGRATIONS_DIR).glob("*.sql"))
+    """Forward migrations, chronologically.
+
+    Sorted by the **stamp**, not the whole filename. Sorting by filename orders by subject
+    first, so `create_access_baseline_..._105455` would run before `create_verdict_log_..._091113`
+    purely because "access" precedes "verdict" -- and a migration that alters what an earlier one
+    created would then run first. Standards 4.3 says the timestamp is the ordering key; this is
+    what makes that true.
+    """
+    return sorted((directory or MIGRATIONS_DIR).glob("*.sql"), key=migration_stamp)
 
 
 # ---------------------------------------------------------------------------

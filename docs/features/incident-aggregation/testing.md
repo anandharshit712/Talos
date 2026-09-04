@@ -65,7 +65,9 @@ is a `ConfigError`.
 **Audit trail — live server** (`tests/integration/test_verdict_log_postgres.py`)
 
 Skipped unless `TALOS_TEST_DB_DSN` is set; a separate variable from `TALOS_DB_DSN` so the suite
-can never write into the database an operator is using.
+can never write into the database an operator is using. **Measured against PostgreSQL 17.2 on
+2026-09-04: 672 passed, 0 skipped.** Each test owns its event loop — the pool cannot be shared
+across `asyncio.run` calls, and now says so rather than failing inside the driver.
 
 - reports round-trip through PostgreSQL unchanged; unknown ids return `None`
 - `recent()` is newest-first; re-appending an escalated incident replaces it

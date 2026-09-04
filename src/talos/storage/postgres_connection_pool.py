@@ -15,6 +15,7 @@ open a socket, and an ``asyncpg`` pool has to be built inside a running event lo
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -32,6 +33,7 @@ class PostgresConnectionPool:
         self._dsn = dsn
         self._config = config
         self._pool: Any | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @classmethod
     def from_settings(cls, config: DatabaseSettings) -> PostgresConnectionPool:
@@ -42,6 +44,7 @@ class PostgresConnectionPool:
         """Open the pool. Idempotent, so a caller may pre-warm without checking first."""
         if self._pool is not None:
             return
+        self._loop = asyncio.get_running_loop()
         try:
             self._pool = await asyncpg.create_pool(
                 self._dsn,
@@ -63,6 +66,7 @@ class PostgresConnectionPool:
         """
         await self.start()
         assert self._pool is not None  # start() either sets it or raises
+        self._check_same_loop()
         try:
             async with self._pool.acquire() as connection:
                 yield connection
@@ -73,8 +77,22 @@ class PostgresConnectionPool:
         """Release every connection. Safe to call on a pool that was never opened."""
         if self._pool is None:
             return
-        pool, self._pool = self._pool, None
+        pool, self._pool, self._loop = self._pool, None, None
         await pool.close()
+
+    def _check_same_loop(self) -> None:
+        """Refuse a pool borrowed from a different event loop than the one that opened it.
+
+        An ``asyncpg`` connection belongs to the loop it was created on; using it from another
+        one fails deep in the driver as "another operation is in progress", which says nothing
+        about the cause. The usual way to arrive here is a second ``asyncio.run()`` over a pool
+        built in the first -- one pool per loop, and one loop per process, is the contract.
+        """
+        if self._loop is not None and self._loop is not asyncio.get_running_loop():
+            raise StorageError(
+                "this pool was opened on a different event loop; open one pool per loop "
+                "(a second asyncio.run() cannot reuse connections from the first)"
+            )
 
     async def __aenter__(self) -> PostgresConnectionPool:
         await self.start()

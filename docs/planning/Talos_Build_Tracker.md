@@ -594,6 +594,24 @@ stores plus a live API.
 - [x] **Verified:** `VerdictRecorder` / `BaselineReader` Protocols unchanged — `git diff --stat`
       touches no agent, detector, orchestrator, or aggregator file
 
+### P6.0.2 Storage gate — **passed 2026-09-04, against PostgreSQL 17.2**
+
+- [x] Role `talos` owns databases `talos` and `talos_test`; both reachable over the DSNs in `.env`
+- [x] `python scripts/apply_migrations.py` applied both migrations to both databases, in stamp
+      order, and a rerun is a no-op
+- [x] Schema verified in place: `verdict_log` with `idx_verdict_log_created_at` and the GIN
+      `idx_verdict_log_report_json`; `access_baseline` with its PK and `idx_access_baseline_updated_at`
+- [x] **Full suite green against the live server: 672 passed, 0 skipped** (645 + 27 integration).
+      Every earlier run had those 27 skipped, so this is the first time the storage layer has
+      actually been measured
+- [x] **Two concurrent writers, no lock error** — 20 simultaneous verdict appends over one pool,
+      and 20 simultaneous `record_access` calls on **one account** yielding exactly 20
+      observations. The second is the lost-update case; SQLite could not have served it
+- [x] `talos scan` end to end on the SSH fixture wrote 2 real incidents to `talos`. Verified in
+      the database: `pg_typeof(report_json) = jsonb`, GIN containment
+      `report_json @> '{"category":"network_brute_force"}'` matches, `created_at` is
+      `timestamptz` with microseconds intact
+
 ### P6.0.1 Found while building the port
 
 - [x] **`postgres_connection_pool.py` had no legal name.** R3.1's closed vocabulary has no `_pool`
@@ -612,6 +630,19 @@ stores plus a live API.
 - [x] **A separate `TALOS_TEST_DB_DSN`**, not the production variable, gates the integration
       suite. Reusing `TALOS_DB_DSN` would mean an ordinary `pytest` run writes test rows into
       whatever database the operator last configured.
+- [x] **Migrations were ordered by filename, not by stamp.** `sorted(glob("*.sql"))` sorts on the
+      whole name, so `create_access_baseline_..._105455` ran *before*
+      `create_verdict_log_..._091113` purely because "access" precedes "verdict" — and standards
+      §4.3 says the timestamp is the ordering key. Harmless for two independent tables; a
+      `CREATE` and its later `ALTER` would have run in the wrong order. Latent since P2, invisible
+      while there was one migration, and exposed the moment a second engine set had two. Fixed by
+      sorting on the extracted stamp, with `tests/unit/scripts/test_apply_migrations.py` added —
+      **the runner had no test file at all**, which is why nothing caught it.
+- [x] **The pool cannot be shared across event loops**, and asyncpg says so as "another
+      operation is in progress", which names nothing. The first integration suite called
+      `asyncio.run` several times per test over one pool and produced 9 failures and 12 errors
+      of that shape. Tests now use one loop per test; the pool remembers its loop and raises a
+      `StorageError` that says what is actually wrong.
 
 ### P6.1 Baseline machinery
 
@@ -667,9 +698,10 @@ stores plus a live API.
 
 ### P6.5 Gate
 
-- [ ] Enumeration detected with correct object-level scope, zero false positives on the benign corpus
-- [ ] Both stores run on PostgreSQL; the full suite passes against it, and two concurrent writers
-      (baseline update + verdict append) complete without a lock error
+- [ ] Enumeration detected with correct object-level scope, zero false positives on the benign
+      corpus — **blocked on P6.2**, which is where a detector exists to measure
+- [x] **Both stores run on PostgreSQL; the full suite passes against it (672 passed, 0 skipped),
+      and concurrent writers complete without a lock error** — evidence in P6.0.2
 
 ---
 
@@ -758,6 +790,8 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.11 | 2026-09-04 | Storage gate passed against live PostgreSQL 17.2: 672 tests, 0 skipped, concurrent writers clean, `talos scan` writing real incidents. Two defects the live run exposed — migrations ordered by filename rather than stamp, and a pool shared across event loops. |
+| 1.10 | 2026-09-04 | P6.1 recorded as done: the access baseline, its bounded update rule, and the store with per-account advisory locking. The redundant index on `account` cut. |
 | 1.9 | 2026-09-04 | P6.0 recorded as done: the audit trail on PostgreSQL, the shared pool, the per-engine migration sets, and the four things the port exposed. Three storage open items closed. |
 | 1.8 | 2026-09-04 | Submission moved to 2026-10-09. Remaining phases carry day counts, not calendar dates; the §8.1 cut order goes dormant and P6 is built in full, PostgreSQL port included. |
 | 1.7 | 2026-08-19 | P5 recorded as done: two web auth detectors, RDP, the shared verdict engine, and the five things building it exposed — including a web parser that had never populated `auth`. Rotated stuffing added to deferred items. |
