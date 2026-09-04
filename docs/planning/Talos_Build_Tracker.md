@@ -25,14 +25,17 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 | **P2** Walking skeleton | D3–D4 | Aug 20–21 | **done** | yes | yes |
 | **P3** LLM layer | D5–D6 | Aug 22–23 | **done** | yes | yes |
 | **P4** Web injection | D7–D9 | Aug 24–26 | **done** | yes | yes |
-| **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | **done** | yes | — |
-| **P6** Broken access control | D12–D14 | Aug 29–31 | not started | — | — |
-| **P7** Output surface | D15 | Sep 1 | not started | — | — |
-| **P8** Evaluation & calibration | D16–D17 | Sep 2–3 | not started | — | — |
-| **P9** Demo & submission | D18 | Sep 4 | not started | — | — |
+| **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | **done** | yes | yes |
+| **P6** Broken access control | D12–D14 | — | not started | — | — |
+| **P7** Output surface | D15 | — | not started | — | — |
+| **P8** Evaluation & calibration | D16–D17 | — | not started | — | — |
+| **P9** Demo & submission | D18 | — | not started | — | — |
 
-**Submission: 2026-09-04.** The date that actually matters is **Aug 21**: if P2 is not producing an
-`IncidentReport` end to end by then, the plan §8.1 cut order starts immediately.
+**Submission: 2026-10-09** (moved from 2026-09-04 by the owner on 2026-09-04). P0–P5 all landed by
+Aug 19, so the original calendar is spent; the remaining phases carry day counts, not dates, and are
+gated by §0.1's definition of done rather than by a date. **The §8.1 cut order is off the table** —
+six planned days of work against five weeks means P6 (IDOR **and** the PostgreSQL port) is built in
+full. Cutting is reintroduced only if a phase overruns its day count by more than double.
 
 ### 0.1 Definition of done — applies to every phase
 
@@ -646,7 +649,7 @@ stores plus a live API.
 
 ---
 
-## P9 — Demo & Submission · D18 (Sep 4)
+## P9 — Demo & Submission · D18
 
 - [ ] Demo script: one web chain (SQLi → auth brute force), one network chain (SSH brute force with a
       trailing success) — raw log → pipeline trace → scoped `IncidentReport`
@@ -659,7 +662,11 @@ stores plus a live API.
 
 ---
 
-## Cut order (plan §8.1) — drop in this sequence, never ad hoc
+## Cut order (plan §8.1) — **dormant since 2026-09-04**, drop in this sequence if it revives
+
+The submission moved to 2026-10-09 and nothing below is being cut. The list stands as the agreed
+sequence should a phase overrun badly enough to need it again.
+
 
 1. [ ] RDP brute force detector (P5)
 2. [ ] Credential stuffing detector (P5)
@@ -699,6 +706,7 @@ stores plus a live API.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.8 | 2026-09-04 | Submission moved to 2026-10-09. Remaining phases carry day counts, not calendar dates; the §8.1 cut order goes dormant and P6 is built in full, PostgreSQL port included. |
 | 1.0 | 2026-08-17 | Initial tracker: dashboard, per-phase/per-section checklists for P0–P9, cut order, open items. P0 and P1 recorded as done. |
 | 1.7 | 2026-08-19 | P5 recorded as done: two web auth detectors, RDP, the shared verdict engine, and the five things building it exposed — including a web parser that had never populated `auth`. Rotated stuffing added to deferred items. |
 | 1.6 | 2026-08-18 | The LLM off switch, the documented `.env.example`, and the defect that review exposed: provider keys on disk were never loaded. |

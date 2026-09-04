@@ -12,9 +12,14 @@ orchestration tooling this cycle; dependencies install natively.
 
 ## 1. Timeline Reality Check
 
-**Today: 2026-08-17. Submission: 2026-09-04. That is 18 working days, not the 23 assumed in earlier
-planning notes.** This plan is built for 18 and names an explicit cut order (§8) so the deadline is met
-by dropping planned scope in a chosen sequence rather than by shipping everything half-finished.
+**Written 2026-08-17 against a 2026-09-04 submission — 18 working days.** The plan is built for 18 and
+names an explicit cut order (§8) so the deadline is met by dropping planned scope in a chosen sequence
+rather than by shipping everything half-finished.
+
+**Superseded 2026-09-04: submission moved to 2026-10-09.** P0–P5 finished by Aug 19, well inside their
+day counts. The dated table below is kept as the original record; the live position is the build
+tracker's dashboard. With five weeks against six planned days of work, **§8's cut order is dormant** —
+every phase including P6 is built in full.
 
 | Phase | Days | Dates | Outcome |
 |---|---|---|---|
