@@ -19,5 +19,11 @@ talos:
     rdp_brute_force: { window_seconds: 120, fail_threshold: 8 }
 
     # IDOR: a baseline below min_baseline_observations is immature and yields a
-    # low-confidence verdict rather than a false positive.
-    idor: { min_baseline_observations: 50, sequential_run_len: 5 }
+    # low-confidence verdict rather than a false positive. The two max_* values bound what one
+    # account's baseline can grow to -- it is read and rewritten on every object access, so an
+    # unbounded row would put the hot path on a row that never stops growing.
+    idor:
+      min_baseline_observations: 50
+      sequential_run_len: 5
+      max_seen_object_ids: 500
+      max_endpoints: 50

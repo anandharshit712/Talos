@@ -615,10 +615,32 @@ stores plus a live API.
 
 ### P6.1 Baseline machinery
 
-- [ ] `detection/baseline/access_baseline.py` (~180) — `AccessBaseline` + online update
-- [ ] `storage/baseline_store.py` (~220) — PostgreSQL (`asyncpg`), per-account advisory locks
-- [ ] `db/migrations/postgres/create_access_baseline_table_<stamp>.sql` + rollback
-- [ ] `db/migrations/postgres/index_access_baseline_by_account_<stamp>.sql` + rollback
+- [x] `detection/baseline/access_baseline.py` (159) — `AccessBaseline` + `observe()`, a pure
+      online update taking its bounds as arguments. Two deltas from the LLD sketch, both in
+      §16.11: `seen_object_ids` is an ordered list (eviction needs an order, and `jsonb` has no
+      set) and `observations` is its own field (maturity cannot be derived from bounded
+      collections without oscillating)
+- [x] `storage/baseline_store.py` (157) — `asyncpg`, `record_access()` doing lock/read/fold/write
+      in one transaction under `pg_advisory_xact_lock(hashtext(account))`. `get` is unlocked on
+      purpose; `put` stays last-writer-wins for seeding, documented as such
+- [x] `db/migrations/postgres/create_access_baseline_table_20260904_105455.sql` + rollback
+- [-] ~~`index_access_baseline_by_account_<stamp>.sql`~~ — **cut as redundant.** `account` is the
+      primary key, which already creates a unique index; a second one would index the same
+      column twice. The migration adds `idx_access_baseline_updated_at` instead, for the only
+      query that is not by key. Recorded in LLD §16.11
+- [x] `talos.detection.idor.max_seen_object_ids` (500) and `max_endpoints` (50) — bounds on a row
+      that sits on the per-event hot path
+
+### P6.1.1 Found while building
+
+- [x] **The endpoint eviction rule dropped the endpoint it had just counted.** On a full baseline
+      that endpoint is the least-used by definition, so a novel endpoint would never have been
+      learned — and `novel_endpoint` is one of the four deviation features, so the scorer would
+      have had a permanently dead input. Caught by writing the cap tests before the scorer, not
+      by the scorer failing later.
+- [x] **`test_a_missing_dsn_is_fatal_and_names_the_variable` passed only on a machine with no
+      `.env`.** `main()` loads `.env` itself, so `monkeypatch.delenv` was undone a line later;
+      the test went red the moment the real DSN was set. Now stubs the load.
 
 ### P6.2 Detection
 
@@ -630,8 +652,10 @@ stores plus a live API.
 
 ### P6.3 Feature docs
 
-- [ ] `docs/features/web-broken-access-control/` — `detection-logic.md` documents the four deviation
-      features, weighting, cold-start policy, and the statistical/LLM `blend()`
+- [x] `docs/features/web-broken-access-control/` created in the same commit as the feature's first
+      code file (R5). `detection-logic.md` documents the baseline, its bounds and eviction rules,
+      the cold-start policy, and specifies the four deviation features
+- [ ] Weighting and the statistical/LLM `blend()` documented — belongs with P6.2, where they exist
 
 ### P6.4 Tests
 

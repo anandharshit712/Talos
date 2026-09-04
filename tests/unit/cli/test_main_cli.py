@@ -96,6 +96,9 @@ def test_a_missing_dsn_is_fatal_and_names_the_variable(
 ) -> None:
     """No audit trail, no scan. Detecting into a database that was never reachable is worse."""
     monkeypatch.chdir(tmp_path)
+    # main() loads .env itself, and a developer's real .env sets the DSN -- without stubbing the
+    # load, this test would pass on CI and fail on the machine that has the variable set.
+    monkeypatch.setattr(main_cli, "load_env_file", lambda *a: [])
     monkeypatch.delenv("TALOS_DB_DSN", raising=False)
 
     assert main(["scan", str(SSH_LOG), "--year", "2026"]) == 1

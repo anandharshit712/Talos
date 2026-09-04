@@ -902,5 +902,16 @@ until P6.0 ports them (HLD §7.1 stages SQLite through P5), and `asyncpg` is not
 | **A missing DSN is fatal at startup** | §10, §14 | Fail-safe for reporting: a pipeline that cannot reach its audit trail must stop, not detect into nothing and report success. `ConfigError` names both the variable and `.env`. |
 | **The e2e pipeline tests double the audit trail** | §14 | The store now needs a live server, and what those tests exist to prove is the chain that produces an `IncidentReport`. The live round-trip — including twenty concurrent appends, the case SQLite's database-wide write lock could not serve — moved to `tests/integration/test_verdict_log_postgres.py`, gated on `TALOS_TEST_DB_DSN` so the suite can never write into an operator's database. |
 
+### 16.11 Revision 1.11 — the access baseline and its store, P6.1 (2026-09-04)
+
+| Change | Where | Why |
+|---|---|---|
+| **`AccessBaseline.seen_object_ids` is an ordered list, not a set** | §7.4 | Eviction needs an order. Dropping an arbitrary element at the cap would eventually forget an id touched yesterday while keeping one from last month, and the field exists to answer "has this account touched this object". `jsonb` has no set type either, so a set round-trips through the store as a list regardless. |
+| **`AccessBaseline` gains `observations`** | §7.4 | Maturity is measured in accesses, and it cannot be derived from the two bounded collections: summing them undercounts a busy account back below its own threshold, so the baseline would oscillate between mature and immature under exactly the load that matters. |
+| **New `storage/baseline_store.py` with `record_access`** | §7.4, §4.2 | The Protocol's `get`/`put` are a read-modify-write with no lock between the halves — two accesses to one account both read the old baseline and the second write discards the first observation, silently. `record_access` does lock, read, fold, write in one transaction under `pg_advisory_xact_lock(hashtext(account))`. `put` remains for seeding and restoring, documented as last-writer-wins. **This is the operation §16.5 changed the engine for.** |
+| **Reads are deliberately unlocked** | §7.4 | A scorer reading a baseline one observation out of date reaches the same verdict, so taking the account's lock on every read would serialise scoring behind learning for nothing. |
+| **`talos.detection.idor.max_seen_object_ids` / `max_endpoints`** | §7.4, §10 | The baseline row is read and rewritten on the per-event hot path, so it has to be bounded. Endpoint eviction excludes the endpoint just counted: on a full baseline it is the least-used by definition, and evicting it would mean `novel_endpoint` — one of the four deviation features — could never be learned. |
+| **No separate index on `access_baseline.account`** | §4.2 | The plan listed one; the column is the primary key, which already provides a unique index. The migration adds `idx_access_baseline_updated_at` instead, for the one query that is not by key. |
+
 ---
 *End of LLD.*

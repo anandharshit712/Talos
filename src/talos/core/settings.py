@@ -100,10 +100,18 @@ class CredentialStuffingThresholds(_Block):
 
 
 class IdorThresholds(_Block):
-    """Baseline maturity and enumeration-run length (LLD 7.4)."""
+    """Baseline maturity, enumeration-run length, and the baseline's own bounds (LLD 7.4)."""
 
     min_baseline_observations: int = Field(default=50, gt=0)
     sequential_run_len: int = Field(default=5, gt=1)
+    max_seen_object_ids: int = Field(default=500, gt=0)
+    """Distinct object ids remembered per account, oldest evicted first.
+
+    A bound, not a tuning knob: an account with a million objects must not grow a million-entry
+    row on the per-event hot path.
+    """
+    max_endpoints: int = Field(default=50, gt=0)
+    """Distinct endpoints remembered per account, least-used evicted first."""
 
 
 class RateConfidenceSettings(_Block):
