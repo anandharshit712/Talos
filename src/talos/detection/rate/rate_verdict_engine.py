@@ -97,9 +97,7 @@ async def assemble_rate_verdict(
             window_end=signal.window_end,
         ),
         evidence=evidence,
-        reasoning=(
-            str(outcome.data["narrative"]) if outcome is not None else template_narrative
-        ),
+        reasoning=(str(outcome.data["narrative"]) if outcome is not None else template_narrative),
         model=(
             ModelInfo(name=outcome.model, route_reason=outcome.route_reason, used_llm=True)
             if outcome is not None

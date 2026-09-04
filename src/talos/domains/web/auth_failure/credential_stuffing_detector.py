@@ -106,9 +106,7 @@ class CredentialStuffingDetector(Detector):
         thresholds = ctx.settings.detection.credential_stuffing
         if len(signal.accounts) < thresholds.distinct_accounts:
             return False
-        return (
-            max(signal.fails_per_account.values(), default=0) <= thresholds.fails_per_account_max
-        )
+        return max(signal.fails_per_account.values(), default=0) <= thresholds.fails_per_account_max
 
     def _narrative(self, signal: RateSignal, window_seconds: int, deepest: int) -> str:
         """Templated reasoning, used whenever no model answers."""
