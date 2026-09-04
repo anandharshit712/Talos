@@ -27,3 +27,21 @@ talos:
       sequential_run_len: 5
       max_seen_object_ids: 500
       max_endpoints: 50
+      # The scorer's window, and the access count that saturates the rate feature.
+      window_seconds: 300
+      access_rate_saturation: 30
+      # Four features, weighted. sequential_run leads because consecutive ids in one window is
+      # the actual signature of enumeration; novel_endpoint is lightest because a legitimate
+      # user reaching a new part of the application looks exactly like it.
+      weights:
+        outside_range: 0.30
+        sequential_run: 0.40
+        novel_endpoint: 0.10
+        access_rate: 0.20
+      # Below the floor the scorer stays silent. Above it, a reasoning model weighs the access
+      # history and judge_weight decides how far its confidence moves the deterministic score.
+      low_score_floor: 0.35
+      judge_weight: 0.40
+      # Cold start: a low-confidence verdict that never fires, so an operator can see that
+      # Talos looked and did not yet know enough. An unfamiliar account is not a guilty one.
+      immature_confidence: 0.20

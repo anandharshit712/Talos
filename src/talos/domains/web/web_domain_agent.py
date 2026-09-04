@@ -4,8 +4,8 @@ Identical in shape to the network agent, which is the point — the orchestrator
 domains, this knows only categories, and neither knows a technique. Registering the web agent is
 what makes the whole web branch reachable; nothing else changes.
 
-P4 registered the injection sub-agent and P5 auth failure; broken access control arrives in P6
-as one more entry in the same map.
+P4 registered the injection sub-agent, P5 auth failure, and P6 broken access control -- each
+one more entry in the same map, and nothing else changed to add them.
 """
 
 from __future__ import annotations
@@ -15,6 +15,9 @@ import logging
 from talos.core.agent_contracts import AttackTypeSubAgent, DetectionContext, DomainAgent
 from talos.core.constants import CATEGORY_UNCLASSIFIED, DOMAIN_WEB
 from talos.domains.web.auth_failure.auth_failure_sub_agent import AuthFailureSubAgent
+from talos.domains.web.broken_access_control.broken_access_control_sub_agent import (
+    BrokenAccessControlSubAgent,
+)
 from talos.domains.web.injection.injection_sub_agent import InjectionSubAgent
 from talos.domains.web.web_type_classifier import WebTypeClassifier
 from talos.schemas.event_schema import NormalizedEvent
@@ -35,7 +38,11 @@ class WebDomainAgent(DomainAgent):
     ) -> None:
         self.classifier = classifier or WebTypeClassifier()
         if sub_agents is None:
-            registered: list[AttackTypeSubAgent] = [InjectionSubAgent(), AuthFailureSubAgent()]
+            registered: list[AttackTypeSubAgent] = [
+                InjectionSubAgent(),
+                AuthFailureSubAgent(),
+                BrokenAccessControlSubAgent(),
+            ]
             sub_agents = {sub_agent.category: sub_agent for sub_agent in registered}
         self.sub_agents = sub_agents
 
@@ -46,9 +53,8 @@ class WebDomainAgent(DomainAgent):
 
         sub_agent = self.sub_agents.get(category)
         if sub_agent is None:
-            # A category with no sub-agent yet is the normal state mid-build:
-            # broken_access_control lands in P6. Log it at debug so it is visible without
-            # pretending a wiring bug.
+            # Every category the classifier can emit now has a sub-agent. This stays as the
+            # guard for a future category: log at debug rather than pretending a wiring bug.
             _log.debug(
                 "no sub-agent registered for category yet",
                 extra={"category": category, "domain": self.domain},

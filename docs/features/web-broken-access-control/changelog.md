@@ -1,5 +1,47 @@
 # Changelog — Web Broken Access Control (IDOR)
 
+## 2026-09-04 — the detector, and the P6 gate (P6.2)
+
+- Added `DeviationScorer`: four weighted features into a deterministic score, the `heavy`-tier
+  judge above the floor, and `Scope.affected_objects` naming exactly the ids walked outside the
+  learned pattern. A disagreeing judge **caps** the finding at the floor rather than vetoing it —
+  the deterministic layer decides, the model adjusts how loudly.
+- Added `AccessBaseliner` and `BrokenAccessControlSubAgent`. The sub-agent is an *ordering*, not
+  a fan-out: score first (learning first puts the current id inside the learned range, so the
+  detector could never fire on the tripping event), and learn only from traffic that scored
+  clean (an enumeration run is exactly what would teach the baseline that walking the id space
+  is normal for this account). Cold-start accesses *are* learned from.
+- Added `llm/prompts/deviation_scorer_judge_v1.md`. Access history is delimited and
+  length-bounded as data; the prompt states that a first visit is not a breach, and that
+  sequence length matters more than novelty.
+- Registered the sub-agent on `WebDomainAgent`. The classifier already routed
+  `broken_access_control`, so nothing in it changed.
+- Added the `talos.detection.idor` scorer keys: `window_seconds`, `access_rate_saturation`,
+  `weights`, `low_score_floor`, `judge_weight`, `immature_confidence`.
+- Added the corpus: `web_idor_enumeration_combined.log` (71 lines) and its **benign counterpart**
+  `web_idor_benign_access_combined.log` (65 lines), plus `tests/support/memory_baseline_store.py`
+  so the pipeline test needs no server.
+- **Gate passed:** the walk is detected with correct object-level scope; the benign corpus
+  produces nothing. Numbers in [testing.md](testing.md).
+- **Three defects found while building:**
+  - **The endpoint compared was the raw path, which carries the object id.** Every access
+    therefore read as a novel endpoint forever, `novel_endpoint` was a constant, and the bounded
+    `endpoints` map would have grown one entry per object until it evicted the real endpoints.
+    Found by the discriminator test firing on a legitimate user opening one new record — the
+    case that exists to catch exactly this.
+  - **The CLI unit tests were making live inference calls.** `main()` loads `.env`, which is its
+    job, so on a machine with provider keys six tests took 108–175s each, burned free-tier quota
+    on every run, and made the suite's result depend on someone else's rate limiter. The suite
+    went from 922s to 15s with `TALOS_LLM__ENABLED=false` in the fixture; a guard test now fails
+    if that line is removed.
+  - **Three routed models were dead** — two end-of-life (HTTP 410) and one outside the
+    subscription tier (403). Re-probed and repaired before the gate: the `nano` tier's primary
+    moved to Groq, because NVIDIA serves this account nothing at that size any more. 7/7 answer.
+- **Known limitations:** a baseline never decays, so an account that changes role keeps its old
+  pattern; the last ids of a run reach no report, because suppression is per escalation rather
+  than per campaign; and the benign corpus's thinnest margin is 0.017, which P8 calibration
+  should measure first.
+
 ## 2026-09-04 — the baseline and its store (P6.1)
 
 - Added `AccessBaseline` and its online update rule in

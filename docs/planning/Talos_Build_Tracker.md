@@ -26,7 +26,7 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 | **P3** LLM layer | D5–D6 | Aug 22–23 | **done** | yes | yes |
 | **P4** Web injection | D7–D9 | Aug 24–26 | **done** | yes | yes |
 | **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | **done** | yes | yes |
-| **P6** Broken access control | D12–D14 | — | not started | — | — |
+| **P6** Broken access control | D12–D14 | — | **done** | yes | — |
 | **P7** Output surface | D15 | — | not started | — | — |
 | **P8** Evaluation & calibration | D16–D17 | — | not started | — | — |
 | **P9** Demo & submission | D18 | — | not started | — | — |
@@ -545,7 +545,7 @@ for the deliberate-reuse claim.
 
 ---
 
-## P6 — Broken Access Control (IDOR) · D12–D14 (Aug 29–31)
+## P6 — Broken Access Control (IDOR) · D12–D14 — **done**
 
 **Goal:** the hardest category — no fixed payload, so it needs learned per-account baselines.
 **Most likely phase to slip** (plan §8): first cut candidate after RDP and credential stuffing.
@@ -675,37 +675,83 @@ stores plus a live API.
 
 ### P6.2 Detection
 
-- [ ] `domains/web/broken_access_control/broken_access_control_sub_agent.py` (~80)
-- [ ] `domains/web/broken_access_control/access_baseliner.py` (~140)
-- [ ] `domains/web/broken_access_control/deviation_scorer.py` (~260) — four features, weighting, blend
-- [ ] `llm/prompts/deviation_scorer_judge_v1.md` (~60)
-- [ ] **R6 watch:** extract `deviation_features.py` if the scorer approaches 800 lines
+- [x] `domains/web/broken_access_control/broken_access_control_sub_agent.py` (66) — an *ordering*,
+      not a fan-out: score, then learn, and only from traffic that scored clean
+- [x] `domains/web/broken_access_control/access_baseliner.py` (117) — object-id and
+      endpoint-template extraction, and the locked record. No model call: folding an access into
+      a baseline is arithmetic, so the `access_baseliner` routing entry was removed (LLD §16.13)
+- [x] `domains/web/broken_access_control/deviation_scorer.py` (322) — four features, configured
+      weights, the judge above the floor, object-level scope
+- [x] `llm/prompts/deviation_scorer_judge_v1.md` — history delimited and bounded as data; states
+      that a first visit is not a breach and that sequence length beats novelty
+- [x] Registered on `WebDomainAgent`; the classifier already routed the category
+- [x] `talos.detection.idor` gains `window_seconds`, `access_rate_saturation`, `weights`,
+      `low_score_floor`, `judge_weight`, `immature_confidence`
+- [x] **R6 watch:** `deviation_scorer.py` is 322 lines — well inside the 800-line split trigger.
+      No `deviation_features.py` extraction needed
+- [x] **Routing re-probed and repaired before the gate** (plan: verify every phase). Two models
+      end-of-life (410), one outside the subscription tier (403). 7/7 answer now
 
 ### P6.3 Feature docs
 
 - [x] `docs/features/web-broken-access-control/` created in the same commit as the feature's first
       code file (R5). `detection-logic.md` documents the baseline, its bounds and eviction rules,
-      the cold-start policy, and specifies the four deviation features
-- [ ] Weighting and the statistical/LLM `blend()` documented — belongs with P6.2, where they exist
+      the four deviation features with their weights, the endpoint-template rule, the cold-start
+      policy, the score-then-learn ordering, and the statistical/LLM `blend()`
 
 ### P6.4 Tests
 
-- [ ] Cold start yields a low-confidence `baseline immature` verdict, never a false positive
-- [ ] Sequential enumeration (`1001,1002,1003,…`) scores high; `scope.affected_objects` lists
-      **exactly** the out-of-pattern IDs
-- [ ] A legitimate user accessing their own new object scores low
-- [ ] Baseline maturity threshold behaviour at the boundary
+- [x] Cold start yields a low-confidence `baseline immature` verdict, never a false positive —
+      and the aggregator drops it, so no incident is produced
+- [x] Sequential enumeration (`8001,8002,8003,…`) scores high; `scope.affected_objects` lists
+      **exactly** the out-of-pattern ids, and a gap in the run breaks it
+- [x] A legitimate user accessing their own new object scores low — silent
+- [x] Baseline maturity threshold behaviour at the boundary, and the run threshold at its edge
+- [x] Not in the plan, and required: ids from another account do not build a run (the window is
+      keyed per account); opaque non-numeric ids produce no run, so a UUID-keyed application is
+      not flagged wholesale; a `403` is reported with `succeeded=False`; a disagreeing judge caps
+      rather than vetoes; the score-then-learn order and the baseline-poisoning guard each have
+      a trace assertion
+- [x] `tests/support/memory_baseline_store.py` — the real `observe` without a server, so the
+      pipeline test runs on a clean clone
 
-### P6.5 Gate
+### P6.5 Gate — **passed 2026-09-04**
 
-- [ ] Enumeration detected with correct object-level scope, zero false positives on the benign
-      corpus — **blocked on P6.2**, which is where a detector exists to measure
-- [x] **Both stores run on PostgreSQL; the full suite passes against it (672 passed, 0 skipped),
-      and concurrent writers complete without a lock error** — evidence in P6.0.2
+- [x] **Enumeration detected with correct object-level scope, zero false positives on the benign
+      corpus.** `critical`, confidence 0.767, `used_llm=false`; scope names `8001…8010` and
+      nothing else; `bob`'s interleaved traffic is not scoped in. The paired benign corpus —
+      paging three adjacent owned ids, a never-used endpoint, and one genuinely new id — produces
+      **nothing**, and its baseline still matured, so the silence is the detector deciding
+- [x] **Both stores run on PostgreSQL; the full suite passes against it, and concurrent writers
+      complete without a lock error** — evidence in P6.0.2
+- [x] `run_all_checks.py --strict`, ruff, ruff format, mypy strict, **734 tests, 0 skipped** —
+      all green, in 15 seconds
+
+### P6.6 Found while building the detector
+
+- [x] **The endpoint feature compared the raw path, which carries the object id.** Every access
+      therefore read as a novel endpoint forever, `novel_endpoint` was a constant, and the
+      bounded `endpoints` map would have grown one entry per object until it evicted the real
+      endpoints. Found by the discriminator test firing on a legitimate user opening one new
+      record — the case written to catch exactly this, doing its job on the first run.
+- [x] **The CLI unit tests were making live inference calls.** `main()` loads `.env`, which is
+      its job, so on a machine with provider keys six tests took 108–175 seconds each, burned
+      free-tier quota on every run, and made the suite's result depend on someone else's rate
+      limiter. The P5 gate's "zero model calls in the entire suite" was already untrue for that
+      file. Fixed with the product's own off switch (`TALOS_LLM__ENABLED=false`) in the fixture,
+      plus a guard test that fails if the line is removed: **922s → 15s**.
+- [x] **Three routed models were dead.** `meta/llama-3.1-8b-instruct` and
+      `nvidia/nemotron-3-nano-30b-a3b` reached end of life (410); `mistral-large-2512` is outside
+      this subscription tier (403). The `nano` tier's primary had to move to Groq because NVIDIA
+      serves this account nothing at that size any more — which also means the guard tier and
+      four detectors now share the Groq budget, a P8 measurement question.
+- [x] **Suppression withholds the tail of a run.** The walk crosses at five ids and escalates at
+      ten; `8011` and `8012` double nothing, so no report names them. Pinned by its own test so
+      the cost is visible rather than discovered in a demo.
 
 ---
 
-## P7 — Output Surface · D15 (Sep 1)
+## P7 — Output Surface · D15
 
 - [ ] `output/api/api_server.py` (~120) — FastAPI factory
 - [ ] `output/api/report_routes.py` (~200) — `POST /events`, `GET /reports`, `GET /reports/{id}`,
@@ -761,7 +807,7 @@ sequence should a phase overrun badly enough to need it again.
    unrelated people mistyping passwords. **Trigger:** P8 measurement against a real capture
    decides whether the false positives are affordable.
 4. [ ] FastAPI surface (P7)
-5. [ ] IDOR / broken access control (P6) — **last resort**
+5. [-] ~~IDOR / broken access control (P6)~~ — built in full, gate passed 2026-09-04
 
 **Never cut:** the P2 walking skeleton, the P8 measured evaluation, the P9 pipeline-trace transparency.
 
@@ -790,6 +836,7 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.12 | 2026-09-04 | **P6 recorded as done.** IDOR detection with object-level scope, the paired benign corpus producing nothing, and the four things building it exposed — including a CLI test suite that had been making live inference calls, and three routed models that had died. |
 | 1.11 | 2026-09-04 | Storage gate passed against live PostgreSQL 17.2: 672 tests, 0 skipped, concurrent writers clean, `talos scan` writing real incidents. Two defects the live run exposed — migrations ordered by filename rather than stamp, and a pool shared across event loops. |
 | 1.10 | 2026-09-04 | P6.1 recorded as done: the access baseline, its bounded update rule, and the store with per-account advisory locking. The redundant index on `account` cut. |
 | 1.9 | 2026-09-04 | P6.0 recorded as done: the audit trail on PostgreSQL, the shared pool, the per-engine migration sets, and the four things the port exposed. Three storage open items closed. |

@@ -3,6 +3,12 @@
 The verdict log speaks to PostgreSQL from P6, and a CLI test should not need a database running
 to prove that ``--pretty`` reaches the sink. The pool and the store are replaced here; the live
 storage path is ``tests/integration/test_verdict_log_postgres.py``.
+
+**The LLM is switched off, and that is not cosmetic.** ``main()`` loads ``.env`` -- that is its
+job -- so on a machine with provider keys these tests were making real inference calls: six of
+them took 108-175 seconds each, burned free-tier quota on every run, and made the suite's result
+depend on someone else's rate limiter. ``TALOS_LLM__ENABLED=false`` is the product's own
+documented off switch and belongs here.
 """
 
 from __future__ import annotations
@@ -42,9 +48,21 @@ def scan_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verdict_log: Any) 
     """A working directory the sinks can write into, and storage that never opens a socket."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("TALOS_DB_DSN", DSN)
+    # Env beats .env (load_env_file uses override=False), so this holds even with keys on disk.
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
     monkeypatch.setattr(main_cli, "PostgresConnectionPool", FakePool)
     monkeypatch.setattr(main_cli, "VerdictLogStore", lambda pool: verdict_log)
     return verdict_log
+
+
+def test_the_suite_runs_with_the_model_layer_off(scan_env: Any) -> None:
+    """A guard, not a behaviour test.
+
+    Without it, deleting one line from ``scan_env`` silently puts live inference back into the
+    unit suite -- which is how it got there in the first place. The scan itself is asserted to
+    work in this mode by every test below: detection is statistical, the model only words it.
+    """
+    assert TalosSettings.load().llm.enabled is False
 
 
 def test_scan_reports_an_incident(scan_env: Any, capsys: pytest.CaptureFixture[str]) -> None:
@@ -99,6 +117,7 @@ def test_a_missing_dsn_is_fatal_and_names_the_variable(
     # main() loads .env itself, and a developer's real .env sets the DSN -- without stubbing the
     # load, this test would pass on CI and fail on the machine that has the variable set.
     monkeypatch.setattr(main_cli, "load_env_file", lambda *a: [])
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
     monkeypatch.delenv("TALOS_DB_DSN", raising=False)
 
     assert main(["scan", str(SSH_LOG), "--year", "2026"]) == 1
@@ -111,6 +130,7 @@ def test_unmigrated_database_names_the_fix(
     """src/ issues no DDL, so the operator is told to run the migration runner."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("TALOS_DB_DSN", DSN)
+    monkeypatch.setenv("TALOS_LLM__ENABLED", "false")
     monkeypatch.setattr(main_cli, "PostgresConnectionPool", FakePool)
 
     class _UnmigratedStore:

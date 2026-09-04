@@ -3,7 +3,7 @@
 # Every routing key is exactly a detector_name or a classifier module stem, so an entry can
 # never drift from the component it routes.
 #
-# Every model below was probed with a live completion on 2026-08-18 and answered. NVIDIA
+# Every model below was probed with a live completion on 2026-09-04 and answered. NVIDIA
 # serves only part of its published catalogue to any given account: codestral, codellama,
 # codegemma, deepseek-coder, granite-code and starcoder all return 404 for ours, and
 # llama-3.2-3b / llama-3.3-70b time out. That is why the code tier leads with Mistral. See
@@ -29,37 +29,43 @@ talos:
 
   routing:
     # --- nano: render a computed signal into a sentence, no judgement required --------------
+    #     Primary is Groq, not NIM: meta/llama-3.1-8b-instruct reached end of life on
+    #     2026-08-26 and NIM serves this account nothing else at that size. The 30B MoE is the
+    #     fallback rather than the primary because paying for 30B to write one sentence about a
+    #     number is the wrong trade -- it is here to answer when Groq's budget is spent.
     network_type_classifier:
       tier: nano
-      provider: nim
-      model: "meta/llama-3.1-8b-instruct"
-      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+      provider: groq
+      model: "openai/gpt-oss-20b"
+      fallback: { provider: nim, model: "nvidia/nemotron-3.5-lightning-30b-a3b" }
     ssh_brute_force_detector:
       tier: nano
-      provider: nim
-      model: "meta/llama-3.1-8b-instruct"
-      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+      provider: groq
+      model: "openai/gpt-oss-20b"
+      fallback: { provider: nim, model: "nvidia/nemotron-3.5-lightning-30b-a3b" }
     rdp_brute_force_detector:
       tier: nano
-      provider: nim
-      model: "meta/llama-3.1-8b-instruct"
-      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+      provider: groq
+      model: "openai/gpt-oss-20b"
+      fallback: { provider: nim, model: "nvidia/nemotron-3.5-lightning-30b-a3b" }
     brute_force_detector:
       tier: nano
-      provider: nim
-      model: "meta/llama-3.1-8b-instruct"
-      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+      provider: groq
+      model: "openai/gpt-oss-20b"
+      fallback: { provider: nim, model: "nvidia/nemotron-3.5-lightning-30b-a3b" }
     credential_stuffing_detector:
       tier: nano
-      provider: nim
-      model: "meta/llama-3.1-8b-instruct"
-      fallback: { provider: groq, model: "openai/gpt-oss-20b" }
+      provider: groq
+      model: "openai/gpt-oss-20b"
+      fallback: { provider: nim, model: "nvidia/nemotron-3.5-lightning-30b-a3b" }
 
     # --- small: the highest-volume LLM call, so MoE with ~3B active params ------------------
+    #     nvidia/nemotron-3-nano-30b-a3b reached end of life on 2026-09-01; the 3.5 lightning
+    #     MoE is its successor at the same active-parameter count.
     web_type_classifier:
       tier: small
       provider: nim
-      model: "nvidia/nemotron-3-nano-30b-a3b"
+      model: "nvidia/nemotron-3.5-lightning-30b-a3b"
       fallback: { provider: groq, model: "openai/gpt-oss-20b" }
 
     # --- code: adversarial, code-shaped payloads. Mistral leads because NVIDIA serves no
@@ -75,20 +81,17 @@ talos:
       model: "codestral-2508"
       fallback: { provider: groq, model: "openai/gpt-oss-120b" }
 
-    # --- long_context: 1M primary. The fallback is 128K, so a fallback on a very long
-    #     access history truncates -- acceptable, and noted in the feature docs.
-    access_baseliner:
-      tier: long_context
-      provider: nim
-      model: "nvidia/nemotron-3.5-lightning-30b-a3b"
-      fallback: { provider: mistral, model: "mistral-large-2512" }
-
     # --- heavy: the hardest judgement in the system, and the rarest call --------------------
+    #     access_baseliner has no entry: folding an access into a baseline is arithmetic, and a
+    #     per-event network call for it would sit on the hot path (LLD rev 1.13). The long_context
+    #     tier therefore has no consumer this cycle.
+    #     The fallback is Groq's 120B, not mistral-large-2512, which returns 403 for this
+    #     subscription tier.
     deviation_scorer:
       tier: heavy
       provider: nim
       model: "nvidia/nemotron-3-super-120b-a12b"
-      fallback: { provider: mistral, model: "mistral-large-2512" }
+      fallback: { provider: groq, model: "openai/gpt-oss-120b" }
 
     # --- guard: screens attacker-controlled payloads before they reach a judge model. On
     #     Groq so it never consumes the NIM request budget the detectors need. If both are

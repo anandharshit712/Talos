@@ -2,9 +2,10 @@
 
 **Status:** in-progress
 **Owner:** Harshit Anand
-**Code:** `src/talos/detection/baseline/access_baseline.py`, `src/talos/storage/baseline_store.py`
-**Config:** `config/thresholds.yaml` → `talos.detection.idor`
-**Tests:** `tests/unit/detection/baseline/test_access_baseline.py`, `tests/unit/storage/test_baseline_store.py`, `tests/integration/test_baseline_store_postgres.py`
+**Code:** `src/talos/domains/web/broken_access_control/deviation_scorer.py`, `src/talos/domains/web/broken_access_control/access_baseliner.py`, `src/talos/domains/web/broken_access_control/broken_access_control_sub_agent.py`, `src/talos/detection/baseline/access_baseline.py`, `src/talos/storage/baseline_store.py`, `src/talos/domains/web/web_type_classifier.py`, `src/talos/domains/web/web_domain_agent.py`
+**Config:** `config/thresholds.yaml` → `talos.detection.idor` · `config/model_routing.yaml` → `routing.deviation_scorer`
+**Prompt:** `src/talos/llm/prompts/deviation_scorer_judge_v1.md`
+**Tests:** `tests/unit/domains/web/broken_access_control/test_deviation_scorer.py`, `tests/unit/domains/web/broken_access_control/test_access_baseliner.py`, `tests/unit/domains/web/broken_access_control/test_broken_access_control_sub_agent.py`, `tests/unit/detection/baseline/test_access_baseline.py`, `tests/unit/storage/test_baseline_store.py`, `tests/integration/test_baseline_store_postgres.py`, `tests/e2e/test_web_idor_pipeline.py`
 **Migrations:** `db/migrations/postgres/create_access_baseline_table_20260904_105455.sql` (+ rollback)
 **MITRE:** T1083 (File and Directory Discovery) · T1530 (Data from Cloud Storage) · **OWASP:** A01:2021 Broken Access Control
 
@@ -28,7 +29,6 @@ account, and a detector that treats unfamiliarity as guilt is a false-positive g
 | [testing.md](testing.md) | cases covered, and the lost-update test that is the storage gate |
 | [changelog.md](changelog.md) | dated entries |
 
-**What is built so far (P6.1):** the baseline model and its update rule, and the store that
-persists it with per-account locking. **What is not:** the sub-agent, the baseliner that drives
-the store from live events, and the deviation scorer that turns a baseline into a `Verdict` —
-all P6.2.
+**Measured on 2026-09-04**, statistical path only, no model reachable: the enumeration corpus
+produces the incident with the walked object ids in scope; the paired benign corpus produces
+**nothing**. Numbers and the corpus's honest size are in [testing.md](testing.md).

@@ -1,0 +1,49 @@
+{
+  "_comment": "Expected outcome for tests/fixtures/logs/web_idor_enumeration_combined.log. Only the stable fields are asserted -- incident_id, verdict_id and created_at are generated per run. The paired benign corpus is web_idor_benign_access_combined.log, which must produce nothing at all.",
+  "domain": "web",
+  "category": "broken_access_control",
+  "technique": "idor",
+  "severity": "critical",
+  "min_confidence": 0.7,
+  "incidents": 2,
+  "_incidents_comment": "Two, not twelve: the crossing at five consecutive ids, then the escalation when the count doubled to ten. Duplicate suppression withholds the rest (talos.aggregation.suppress_duplicates).",
+  "account": "mallory",
+  "affected_accounts": [
+    "mallory"
+  ],
+  "affected_endpoints": [
+    "/api/orders"
+  ],
+  "walked_object_ids": [
+    "8001",
+    "8002",
+    "8003",
+    "8004",
+    "8005",
+    "8006",
+    "8007",
+    "8008",
+    "8009",
+    "8010",
+    "8011",
+    "8012"
+  ],
+  "final_affected_objects": [
+    "8001",
+    "8002",
+    "8003",
+    "8004",
+    "8005",
+    "8006",
+    "8007",
+    "8008",
+    "8009",
+    "8010"
+  ],
+  "_scope_comment": "The final incident scopes the first ten ids. 8011 and 8012 arrived after the last escalation, so no report names them -- the known cost of per-escalation reporting, carried as a P8 calibration item.",
+  "mitre_techniques": [
+    "T1083",
+    "T1530"
+  ],
+  "used_llm": false
+}

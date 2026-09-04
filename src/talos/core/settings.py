@@ -99,6 +99,21 @@ class CredentialStuffingThresholds(_Block):
     fails_per_account_max: int = Field(default=3, gt=0)
 
 
+class IdorWeights(_Block):
+    """How the four deviation features combine into one deterministic score (LLD 7.4).
+
+    The weights need not sum to 1 -- the score is normalised by the total weight -- but keeping
+    them comparable is what makes the numbers readable in a report. P8 calibration moves these.
+    """
+
+    outside_range: float = Field(default=0.30, ge=0.0, le=1.0)
+    sequential_run: float = Field(default=0.40, ge=0.0, le=1.0)
+    """The heaviest feature: consecutive ids in one window is the signature of enumeration."""
+    novel_endpoint: float = Field(default=0.10, ge=0.0, le=1.0)
+    """The lightest: a legitimate user reaching a new part of the application does this."""
+    access_rate: float = Field(default=0.20, ge=0.0, le=1.0)
+
+
 class IdorThresholds(_Block):
     """Baseline maturity, enumeration-run length, and the baseline's own bounds (LLD 7.4)."""
 
@@ -112,6 +127,20 @@ class IdorThresholds(_Block):
     """
     max_endpoints: int = Field(default=50, gt=0)
     """Distinct endpoints remembered per account, least-used evicted first."""
+
+    window_seconds: int = Field(default=300, gt=0)
+    """How far back the scorer looks for a run of ids, and over which the rate is measured."""
+    access_rate_saturation: int = Field(default=30, gt=0)
+    """Object accesses in one window that score the rate feature at 1.0."""
+
+    weights: IdorWeights = Field(default_factory=IdorWeights)
+
+    low_score_floor: float = Field(default=0.35, ge=0.0, le=1.0)
+    """Below this the scorer stays silent -- no verdict, not a low-confidence one."""
+    judge_weight: float = Field(default=0.40, ge=0.0, le=1.0)
+    """How much the model's confidence moves the deterministic score when one answered."""
+    immature_confidence: float = Field(default=0.20, ge=0.0, le=1.0)
+    """Confidence on the cold-start verdict. It never fires, so this is a visibility figure."""
 
 
 class RateConfidenceSettings(_Block):

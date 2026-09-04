@@ -41,6 +41,7 @@ from talos.orchestrator.event_orchestrator import EventOrchestrator
 from talos.orchestrator.verdict_aggregator import VerdictAggregator
 from talos.output.sinks.json_file_sink import JsonFileSink
 from talos.output.sinks.stdout_sink import StdoutSink
+from talos.storage.baseline_store import BaselineStore
 from talos.storage.event_window_store import EventWindowStore
 from talos.storage.postgres_connection_pool import PostgresConnectionPool
 from talos.storage.verdict_log_store import VerdictLogStore
@@ -50,8 +51,12 @@ _log = logging.getLogger("talos.cli")
 Sink = StdoutSink | JsonFileSink
 
 
-class _EmptyBaselineStore:
-    """Stands in for the P6 baseline store. Cold start is the correct answer until then."""
+class _NoBaseline:
+    """Every account cold, nothing learned. Only used when no store is supplied.
+
+    It satisfies ``BaselineReader`` and deliberately lacks ``record_access``, so the baseliner
+    declines to learn rather than racing a store that cannot lock.
+    """
 
     async def get(self, account: str) -> Any | None:
         return None
@@ -69,8 +74,16 @@ class ScanResult:
     incidents: int = 0
 
 
-def build_orchestrator(settings: TalosSettings, verdict_log: VerdictLogStore) -> EventOrchestrator:
-    """Wire the pipeline. Registering a domain agent is the whole integration surface."""
+def build_orchestrator(
+    settings: TalosSettings,
+    verdict_log: VerdictLogStore,
+    baseline_store: BaselineStore | Any | None = None,
+) -> EventOrchestrator:
+    """Wire the pipeline. Registering a domain agent is the whole integration surface.
+
+    ``baseline_store`` is optional so a caller that only exercises the stateless detectors --
+    every test that is not about IDOR -- can pass a double instead of provisioning PostgreSQL.
+    """
     router = build_router(settings)
     _log.info(
         "model providers available",
@@ -81,7 +94,7 @@ def build_orchestrator(settings: TalosSettings, verdict_log: VerdictLogStore) ->
             ttl_seconds=settings.storage.event_window_ttl_seconds,
             max_events_per_key=settings.storage.event_window_max_events,
         ),
-        baseline_store=_EmptyBaselineStore(),
+        baseline_store=baseline_store if baseline_store is not None else _NoBaseline(),
         model_client=router,
         settings=settings,
         verdict_log=verdict_log,
@@ -132,7 +145,7 @@ async def _scan_with_storage(args: argparse.Namespace, settings: TalosSettings) 
     database = settings.storage.database
     pool = PostgresConnectionPool(args.dsn or database.resolve_dsn(), database)
     try:
-        orchestrator = build_orchestrator(settings, VerdictLogStore(pool))
+        orchestrator = build_orchestrator(settings, VerdictLogStore(pool), BaselineStore(pool))
         parser: BaseParser = (
             WebLogParser() if args.domain == "web" else NetworkLogParser(default_year=args.year)
         )

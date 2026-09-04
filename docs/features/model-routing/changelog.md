@@ -1,5 +1,35 @@
 # Changelog — Model Routing
 
+## 2026-09-04 — three dead models, repaired before the P6 gate
+
+Re-probed with `scripts/check_model_availability.py`, as the plan requires before every gate.
+Three routing entries no longer worked:
+
+| Model | Failure | Consumers |
+|---|---|---|
+| `meta/llama-3.1-8b-instruct` | HTTP 410, end of life 2026-08-26 | all five `nano` primaries |
+| `nvidia/nemotron-3-nano-30b-a3b` | HTTP 410, end of life 2026-09-01 | `web_type_classifier` primary |
+| `mistral-large-2512` | HTTP 403, outside this subscription tier | `access_baseliner`, `deviation_scorer` fallbacks |
+
+Repairs:
+
+- **`nano` primaries move to Groq** (`openai/gpt-oss-20b`), with NIM's 3.5-lightning MoE as the
+  fallback. Not the arrangement §8.2 wanted — NVIDIA now serves this account nothing at that
+  size, so the tier had to change provider rather than model. The 30B MoE is the fallback rather
+  than the primary because paying for 30B to write one sentence about a number is the wrong
+  trade; it is there for when Groq's daily budget is spent.
+- **`web_type_classifier`** takes `nvidia/nemotron-3.5-lightning-30b-a3b`, the successor at the
+  same active-parameter count.
+- **`deviation_scorer`'s fallback** becomes Groq's `openai/gpt-oss-120b`.
+- **`access_baseliner` is removed from the table.** Folding an access into a baseline is
+  arithmetic; a per-event network call for it would sit on the hot path for a decision a model
+  cannot improve (LLD §16.13). The `long_context` tier has no consumer this cycle.
+
+**7/7 routed models answered** after the repair. Two consequences worth carrying: the guard tier
+and four detectors now share the Groq budget, and free-tier withdrawal is clearly not a rare
+event — three entries died inside seventeen days. The re-probe is the control, and it worked.
+
+
 ## 2026-08-18 — an off switch for the model layer
 
 - Added `talos.llm.enabled` (default `true`). `false` makes `build_router` skip every provider
