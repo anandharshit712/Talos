@@ -910,15 +910,25 @@ the gate below is not met by them.
 
 ---
 
-## P9 — Demo & Submission · D18
+## P9 — Demo & Submission · D18 — **in progress**
 
-- [ ] Demo script: one web chain (SQLi → auth brute force), one network chain (SSH brute force with a
-      trailing success) — raw log → pipeline trace → scoped `IncidentReport`
-- [ ] **The pipeline trace is the differentiator** — show the reasoning, not just the verdict
-- [ ] `docs/submission/` deliverables finalised
+- [x] **Demo script done.** `talos demo` runs both prepared chains through the real pipeline and
+      prints the annotated trace — every event, its routing, the evidence, the confidence, and the
+      scoped incident. Web chain: four SQLi payloads (one per pattern class) then a login brute force
+      that lands (three incidents, two detectors). Network chain: an SSH brute force escalating from
+      medium to high on the trailing success. Model off; `--json` emits the structure the UI consumes.
+      `src/talos/output/demo_trace_engine.py` + the CLI subcommand + `docs/submission/demo_*_chain.log`,
+      pinned by `tests/unit/output/test_demo_trace_engine.py`. Feature folder `pipeline-trace-demo/`.
+- [x] **The pipeline trace is the differentiator** — the demo's whole output is the reasoning, not
+      the verdict. Both faces (terminal, UI) read one `Trace` structure so they cannot drift.
+- [ ] **Web UI — the trace visualiser.** A self-contained page served by the P7 FastAPI: feed a log,
+      watch the trace unfold (event → verdict + evidence + confidence → scoped incident). Consumes
+      `Trace.to_dict()`. **Next.**
+- [ ] `docs/submission/` deliverables finalised (chains committed; write-up still to do)
 - [ ] README quickstart verified from a clean clone
-- [ ] `LICENSE` chosen and added (P0 open item), `pyproject.toml` TODO cleared
-- [ ] `make check` green; all R5 statuses `stable`
+- [ ] `LICENSE` — **owner deferred it ("for now none", 2026-09-07)**; still open, blocks a clean
+      open-source submission. `pyproject.toml` TODO stands.
+- [x] `make check` green; all R5 statuses `stable`
 - [ ] Final push
 
 ---

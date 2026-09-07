@@ -28,7 +28,10 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from talos.output.demo_trace_engine import Trace
 
 from talos.core.agent_contracts import DetectionContext
 from talos.core.error_types import TalosError
@@ -176,6 +179,91 @@ def _run_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+#: The prepared chains behind a bare ``talos demo`` (HLD P9). Each is a committed log that tells one
+#: story: a multi-stage web attack, and a network brute force that lands.
+_DEMO_CHAINS: tuple[tuple[str, str, str], ...] = (
+    ("Web - SQL injection, then a login brute force", "demo_web_chain.log", "web"),
+    ("Network - SSH brute force with a trailing success", "demo_network_chain.log", "network"),
+)
+
+
+def _run_demo(args: argparse.Namespace) -> int:
+    """Run the prepared chains through the real pipeline and print the reasoning, not just the
+    verdict. The trace is what makes Talos more than a WAF regex (HLD P9), so it is the whole
+    output: every event, what it was routed to, the evidence, and the incident it aggregated into.
+    """
+    from talos.output.demo_trace_engine import build_trace
+
+    settings = TalosSettings.load(config_dir=args.config_dir)
+    configure_logging(args.log_level or "WARNING")  # the trace is the output; keep logs out of it
+    submission = Path(__file__).resolve().parents[3] / "docs" / "submission"
+
+    chains = _DEMO_CHAINS
+    if args.chain != "all":
+        chains = tuple(c for c in _DEMO_CHAINS if c[2] == args.chain)
+
+    for title, filename, domain in chains:
+        path = args.file or (submission / filename)
+        lines = path.read_text(encoding="utf-8").splitlines()
+        parser: BaseParser = (
+            WebLogParser() if domain == "web" else NetworkLogParser(default_year=args.year or 2026)
+        )
+        # The prepared chains are injection and brute force; neither reads a baseline, so the
+        # cold-start store is right. An IDOR chain would need an in-memory learning store.
+        trace = build_trace(title, lines, parser, settings, baseline_store=_NoBaseline())
+        if args.json:
+            print(json.dumps(trace.to_dict(), indent=2, default=str))
+        else:
+            print(_render_trace(trace))
+    return 0
+
+
+def _render_trace(trace: Trace) -> str:
+    """The annotated pipeline trace, one block per event that produced a verdict."""
+    rule = "=" * 64
+    out = [
+        "",
+        rule,
+        f"  {trace.title}",
+        f"  {trace.events} events | {trace.incidents} incident(s) | "
+        f"model {'on' if trace.used_llm else 'off (statistical path)'}",
+        rule,
+    ]
+    for step in trace.steps:
+        firing = [v for v in step.verdicts if v.attack_detected]
+        if not firing and step.incident is None:
+            continue
+        out.append(f"\n  event {step.index}: {step.summary}   [{step.source}]")
+        for verdict in firing:
+            out.append(
+                f"    -> {verdict.detector}: {verdict.technique} "
+                f"(confidence {verdict.confidence:.2f})"
+            )
+            for evidence in verdict.evidence[:1]:
+                out.append(f"        evidence: {evidence.detail}")
+        incident = step.incident
+        if incident is not None:
+            scope = ", ".join(
+                part
+                for part in (
+                    f"accounts={incident.affected_accounts}" if incident.affected_accounts else "",
+                    f"endpoints={incident.affected_endpoints}"
+                    if incident.affected_endpoints
+                    else "",
+                    f"hosts={incident.affected_hosts}" if incident.affected_hosts else "",
+                )
+                if part
+            )
+            out.append(
+                f"    *** INCIDENT {incident.category} / {incident.severity} "
+                f"(confidence {incident.confidence:.2f}, MITRE {', '.join(incident.mitre)})"
+            )
+            out.append(f"        {incident.summary}")
+            out.append(f"        scope: {scope}")
+    out.append("")
+    return "\n".join(out)
+
+
 def _run_serve(args: argparse.Namespace) -> int:
     """Run the report API. Blocks until interrupted."""
     import uvicorn
@@ -301,6 +389,29 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--pretty", action="store_true", help="indent the JSON written to stdout")
     scan.add_argument("--log-level", default=None, help="DEBUG | INFO | WARNING | ERROR")
     scan.set_defaults(handler=_run_scan)
+
+    demo = subcommands.add_parser(
+        "demo", help="run the prepared attack chains and print the annotated pipeline trace"
+    )
+    demo.add_argument(
+        "--chain",
+        choices=("all", "web", "network"),
+        default="all",
+        help="which prepared chain to run (default: all)",
+    )
+    demo.add_argument(
+        "--file",
+        type=Path,
+        default=None,
+        help="run a custom log instead of the prepared chain (use with --chain to pick the parser)",
+    )
+    demo.add_argument("--json", action="store_true", help="emit the trace as JSON, not a table")
+    demo.add_argument(
+        "--config-dir", type=Path, default=None, help="directory holding the YAML config"
+    )
+    demo.add_argument("--year", type=int, default=None, help="year for year-less syslog stamps")
+    demo.add_argument("--log-level", default=None, help="DEBUG | INFO | WARNING | ERROR")
+    demo.set_defaults(handler=_run_demo)
 
     serve = subcommands.add_parser("serve", help="run the report API")
     serve.add_argument("--host", default=None, help="bind address (default: talos.output.api.host)")
