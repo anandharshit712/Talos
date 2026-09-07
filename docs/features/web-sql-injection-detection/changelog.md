@@ -15,6 +15,14 @@
   stay borderline by design and route to the model tier.
 - Captured fixtures committed (`web_sql_injection_captured_access.log`); capture method scripted
   at `scripts/capture_web_attack_corpus.py`. See LLD §16.15.
+- **Tightened `union_select`** to require a column list after SELECT (a star, number, quote,
+  function call, comma-list, or FROM). An adversarial prose probe showed the keyword-only rule
+  firing at 0.95 on `how do I write a UNION SELECT across two tables`. Lossless — recall held at
+  0.89 — because every real UNION injection carries a column list.
+- **Calibration:** left empty on purpose. The static path is 0-FP and conservative in-distribution,
+  so every confidence band reads 1.00; a correction curve would have nothing to correct. The one
+  overconfident regime (attack vocabulary in free-text fields) is documented, not curve-fitted. See
+  `docs/operations/Talos_Evaluation_Results.md`.
 
 ## 2026-08-18 — the flagship detector (P4)
 

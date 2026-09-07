@@ -1,6 +1,6 @@
 # Feature — Network Brute Force Detection
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/domains/network/brute_force/ssh_brute_force_detector.py`, `src/talos/domains/network/brute_force/rdp_brute_force_detector.py`, `src/talos/domains/network/brute_force/network_brute_force_sub_agent.py`, `src/talos/domains/network/network_type_classifier.py`, `src/talos/domains/network/network_domain_agent.py`, `src/talos/detection/rate/rate_engine.py`, `src/talos/detection/rate/rate_verdict_engine.py`, `src/talos/storage/event_window_store.py`
 **Config:** `config/thresholds.yaml` → `talos.detection.ssh_brute_force`, `talos.detection.rdp_brute_force`, `talos.detection.rate_confidence`

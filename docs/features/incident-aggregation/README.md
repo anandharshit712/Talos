@@ -1,6 +1,6 @@
 # Feature — Incident Aggregation and Output
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/storage/postgres_connection_pool.py`, `src/talos/orchestrator/event_orchestrator.py`, `src/talos/orchestrator/agent_registry.py`, `src/talos/orchestrator/verdict_aggregator.py`, `src/talos/output/sinks/stdout_sink.py`, `src/talos/output/sinks/json_file_sink.py`, `src/talos/storage/verdict_log_store.py`, `src/talos/cli/main_cli.py`
 **Config:** `config/default.yaml` → `talos.aggregation`, `talos.output`, `talos.storage`

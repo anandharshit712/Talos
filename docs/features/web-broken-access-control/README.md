@@ -1,6 +1,6 @@
 # Feature — Web Broken Access Control (IDOR)
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/domains/web/broken_access_control/deviation_scorer.py`, `src/talos/domains/web/broken_access_control/access_baseliner.py`, `src/talos/domains/web/broken_access_control/broken_access_control_sub_agent.py`, `src/talos/detection/baseline/access_baseline.py`, `src/talos/storage/baseline_store.py`, `src/talos/domains/web/web_type_classifier.py`, `src/talos/domains/web/web_domain_agent.py`
 **Config:** `config/thresholds.yaml` → `talos.detection.idor` · `config/model_routing.yaml` → `routing.deviation_scorer`

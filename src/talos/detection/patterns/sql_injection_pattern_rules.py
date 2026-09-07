@@ -72,9 +72,16 @@ SQL_INJECTION_RULES: tuple[PatternRule, ...] = (
     PatternRule(
         pattern_class="union",
         name="union_select",
-        pattern=re.compile(r"\bunion\s+(?:all\s+)?select\b", _I),
+        pattern=re.compile(
+            r"\bunion\s+(?:all\s+)?select\s+"
+            r"(?:\*|distinct\b|top\b|null\b|@@|\d|['\"`(]|[\w]+\s*[,(]|[\w.]+\s+from\b)",
+            _I,
+        ),
         unambiguous=True,
-        note="UnIoN SeLeCt is covered by the case-insensitive flag; inline comments are handled "
+        note="requires an actual column list after SELECT -- a star, a number, a quote, a "
+        "function call, a comma-separated list, or a FROM. 'how do I write a UNION SELECT across "
+        "two tables' in a search box is prose, not injection, and no longer fires (P8). "
+        "UnIoN SeLeCt is covered by the case-insensitive flag; inline comments are handled "
         "by the evasion class",
     ),
     PatternRule(

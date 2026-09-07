@@ -1,6 +1,6 @@
 # Feature — Web XSS Detection
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/domains/web/injection/xss_detector.py`, `src/talos/detection/patterns/xss_pattern_rules.py`, `src/talos/detection/patterns/pattern_engine.py`
 **Config:** `config/model_routing.yaml` → `routing.xss_detector`

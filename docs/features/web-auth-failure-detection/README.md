@@ -1,6 +1,6 @@
 # Feature — Web Auth Failure Detection
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/domains/web/auth_failure/auth_failure_sub_agent.py`, `src/talos/domains/web/auth_failure/brute_force_detector.py`, `src/talos/domains/web/auth_failure/credential_stuffing_detector.py`, `src/talos/detection/rate/rate_verdict_engine.py`, `src/talos/detection/rate/rate_engine.py`, `src/talos/ingestion/parsers/web_log_parser.py`
 **Config:** `config/thresholds.yaml` → `talos.detection.brute_force`, `talos.detection.credential_stuffing`, `talos.detection.rate_confidence`

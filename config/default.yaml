@@ -67,6 +67,10 @@ talos:
     sinks: [stdout, json_file]
     report_dir: out/reports
 
-  # Per-detector calibration curve parameters, measured in P8 (LLD 9). Empty means
-  # "emit raw confidence", which is the honest default until the numbers exist.
+  # Per-detector calibration curve parameters (LLD 9). Left empty on purpose after the P8
+  # measurement, not for want of numbers: the statistical detectors are 0-false-positive and
+  # conservative in-distribution, so every confidence band reads 1.00 and a correction curve
+  # would have nothing to correct. Fitting one from the out-of-distribution prose probe would
+  # mis-tune the detector where it is already right. See docs/operations/Talos_Evaluation_Results.md.
+  # Trigger to populate: a deployment where outcome-calibration becomes measurable (hard negatives).
   calibration: {}

@@ -27,16 +27,17 @@ Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
 ## Where the build stands
 
-**P0–P7 are done and pushed. P8 (evaluation & calibration) is in progress, unpushed.**
-Storage is on PostgreSQL, the FastAPI surface is up (`talos serve`, `talos replay`), and both
-domains' detectors are built. **P8.1 (metrics harness) and the P8.2 payload corpus are done**; the
-phase gate is not yet met. Real captured SQLi/XSS payloads (via `scripts/capture_web_attack_corpus.py`)
-measure SQLi at **precision 1.00 / recall 0.89** and XSS at **1.00 / 0.98**, model off — the recall
-gap they exposed was closed by two SQLi rule additions (LLD §16.15). Still open before the gate:
-the **windowed** corpus (brute force, stuffing, RDP, IDOR) is still synthetic; **calibration is
-unmeasurable** until the corpus has inputs a detector gets *wrong* (every band reads 1.00 today);
-`config/default.yaml` → `calibration:` stays empty until then; and `docs/operations/Talos_Evaluation_Results.md`
-plus the feature `Status:` advances to `stable` are unwritten.
+**P0–P8 are done and pushed. P9 (demo & submission) is next.**
+Storage is on PostgreSQL, the FastAPI surface is up (`talos serve`, `talos replay`), both domains'
+detectors are built and **measured on real captured corpora** (`scripts/capture_web_attack_corpus.py`):
+SQLi 1.00/0.89, XSS 1.00/0.98, the four windowed detectors 1.00/1.00, 0 false positives over 459
+events. Results in `docs/operations/Talos_Evaluation_Results.md`; all feature statuses `stable`.
+Calibration was **measured and resolved**: `config/default.yaml → calibration:` stays empty on
+purpose — the static path is 0-FP and conservative in-distribution, so a curve would have nothing to
+correct; the one overconfident regime (attack vocabulary in free-text fields) is documented and pinned
+by a test. Deferred with triggers: SSH/RDP real capture, hard-negative outcome-calibration. **P9 is
+the demo: one web chain, one network chain, raw log → pipeline trace → scoped `IncidentReport`, and
+the `LICENSE` open item.**
 [docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) is the live record —
 every phase, section, file, test, and gate. **Tick its boxes in the same commit as the work.**
 

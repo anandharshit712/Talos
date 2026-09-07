@@ -1,6 +1,6 @@
 # Feature — Network Log Ingestion
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/ingestion/parser_contract.py`, `src/talos/ingestion/parsers/network_log_parser.py`
 **Config:** `config/default.yaml` → `talos.ingestion.network.formats`

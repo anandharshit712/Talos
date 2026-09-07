@@ -69,6 +69,30 @@ def test_case_and_spacing_do_not_evade() -> None:
     assert is_unambiguous(hits("1 UnIoN   SeLeCt 1,2"))
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "1 UNION SELECT username,password FROM users--",
+        "1 UNION SELECT null,version()--",
+        "-1 UNION SELECT 1,2,3,4,5--",
+        "1' UNION SELECT LOAD_FILE('/etc/passwd')--",
+        "1 UNION ALL SELECT *",
+    ],
+)
+def test_real_union_injection_fires(payload: str) -> None:
+    """UNION SELECT with an actual column list is still decisive after the P8 tightening."""
+    assert is_unambiguous(hits(payload)), payload
+
+
+def test_union_select_in_prose_does_not_fire() -> None:
+    """P8: a search box receiving 'how do I write a UNION SELECT across two tables' is prose.
+
+    The rule now requires a column list after SELECT -- a star, a number, a quote, a function
+    call, a comma-list, or a FROM -- so keyword-only vocabulary in a sentence no longer fires.
+    """
+    assert not is_actionable(hits("how do I write a UNION SELECT across two tables"))
+
+
 # --- the benign corpus -------------------------------------------------------------------------
 
 

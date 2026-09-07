@@ -1,6 +1,6 @@
 # Feature — Model Routing
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/llm/model_client.py`, `src/talos/llm/model_router.py`, `src/talos/llm/prompts/`
 **Config:** `config/model_routing.yaml` (providers + per-agent routes), `config/default.yaml` → `talos.llm`

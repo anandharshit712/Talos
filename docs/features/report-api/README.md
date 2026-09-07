@@ -1,6 +1,6 @@
 # Feature — Report API
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/output/api/api_server.py`, `src/talos/output/api/report_routes.py`, `src/talos/cli/main_cli.py`
 **Config:** `config/default.yaml` → `talos.output.api`, `talos.storage.database.retention_days`

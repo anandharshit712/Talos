@@ -1,6 +1,6 @@
 # Feature — Web Log Ingestion
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/ingestion/parsers/web_log_parser.py`
 **Config:** `config/default.yaml` → `talos.ingestion.web.formats`

@@ -1,6 +1,6 @@
 # Feature — Web SQL Injection Detection
 
-**Status:** in-progress
+**Status:** stable
 **Owner:** Harshit Anand
 **Code:** `src/talos/domains/web/injection/sql_injection_detector.py`, `src/talos/detection/patterns/sql_injection_pattern_rules.py`, `src/talos/detection/patterns/pattern_engine.py`, `src/talos/domains/web/injection/injection_sub_agent.py`, `src/talos/domains/web/web_type_classifier.py`, `src/talos/domains/web/web_domain_agent.py`
 **Config:** `config/model_routing.yaml` → `routing.sql_injection_detector`
