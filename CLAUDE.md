@@ -27,7 +27,10 @@ Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
 ## Where the build stands
 
-**P0–P3 are done. P4 (web injection, the flagship category) is next.**
+**P0–P7 are done and pushed. P8 (evaluation & calibration) is next.**
+Storage is on PostgreSQL, the FastAPI surface is up (`talos serve`, `talos replay`), and both
+domains' detectors are built. P8 measures them: precision / recall / F1 per detector and the
+calibration curves that are still empty in `config/default.yaml`.
 [docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) is the live record —
 every phase, section, file, test, and gate. **Tick its boxes in the same commit as the work.**
 
@@ -42,13 +45,22 @@ and a note in the tracker. What is already settled and must not be re-litigated 
   raise `ConfigError` at load.
 - MITRE/OWASP come from `knowledge/`; never hand-type a technique id in a detector.
 - Store methods are `async` (`VerdictRecorder`, `BaselineReader`) — the P6 PostgreSQL port
-  changes the implementation only. Detectors reach models through `ctx.model_client.complete_for`,
+  changed the implementation only. Detectors reach models through `ctx.model_client.complete_for`,
   never a provider or model id.
 
 ## Commits and pushes
 
 **Commit freely; push only when a phase's gate has passed.** Split or squash as convenient — the
 constraint is on `git push`, not on commit count. Record the push in the tracker's dashboard.
+
+**Every phase push carries three doc updates, made before `git push`, not after:**
+
+1. The tracker — boxes ticked, dashboard row set to **done** / gate / pushed, a §Document control entry.
+2. **This file's "Where the build stands"** — the finished phase and the next one. It is the only
+   status line that is always in context, so a stale one misdirects every later session.
+3. Each touched feature folder's `changelog.md` (R5), and its `README.md` `**Status:**` if it moved.
+
+The push is not done until all three are in the same push. If a phase's gate fails, none of them move.
 
 **No AI attribution in commit messages, ever.** No `Co-Authored-By: Claude` trailer, no
 "Generated with Claude Code" line, no assistant name, model name, or `claude.com` link anywhere
