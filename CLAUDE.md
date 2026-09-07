@@ -29,11 +29,14 @@ Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
 **P0–P7 are done and pushed. P8 (evaluation & calibration) is in progress, unpushed.**
 Storage is on PostgreSQL, the FastAPI surface is up (`talos serve`, `talos replay`), and both
-domains' detectors are built. **P8.1 (the metrics harness) is done**; the gate is not met, because
-what is left is the corpus. Today's corpus is 550 lines and scores 1.00 on everything, which is a
-smoke test with arithmetic attached, not a precision result. Two consequences to know before
-touching P8: calibration is **unmeasurable** until the corpus contains inputs a detector gets
-wrong, and `config/default.yaml` → `calibration:` stays empty until then.
+domains' detectors are built. **P8.1 (metrics harness) and the P8.2 payload corpus are done**; the
+phase gate is not yet met. Real captured SQLi/XSS payloads (via `scripts/capture_web_attack_corpus.py`)
+measure SQLi at **precision 1.00 / recall 0.89** and XSS at **1.00 / 0.98**, model off — the recall
+gap they exposed was closed by two SQLi rule additions (LLD §16.15). Still open before the gate:
+the **windowed** corpus (brute force, stuffing, RDP, IDOR) is still synthetic; **calibration is
+unmeasurable** until the corpus has inputs a detector gets *wrong* (every band reads 1.00 today);
+`config/default.yaml` → `calibration:` stays empty until then; and `docs/operations/Talos_Evaluation_Results.md`
+plus the feature `Status:` advances to `stable` are unwritten.
 [docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) is the live record —
 every phase, section, file, test, and gate. **Tick its boxes in the same commit as the work.**
 
