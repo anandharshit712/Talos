@@ -1,5 +1,14 @@
 # Changelog — Web Auth Failure Detection
 
+## 2026-09-07 — real captured fixtures (P8)
+
+- Added `web_brute_force_captured_access.log` and `web_credential_stuffing_captured_access.log`:
+  real login bursts fired through nginx (`scripts/capture_web_attack_corpus.py`), so the timing and
+  combined-log format are authentic. Wired into the P8 harness beside the synthetic fixtures.
+- Both detectors measured **precision 1.00 / recall 1.00** on the captured bursts, model off. Two
+  captured benign counterparts — an ordinary mistype-then-succeed login, and the same across a few
+  users — stay silent, as required.
+
 ## 2026-08-19 — Brute force and credential stuffing, end to end (P5)
 
 - Added `BruteForceDetector` — T1110, keyed per account, depth over `talos.detection.brute_force`.

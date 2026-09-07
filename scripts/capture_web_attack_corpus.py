@@ -42,6 +42,7 @@ else is exactly what nginx wrote.
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 import time
 import urllib.error
@@ -209,6 +210,76 @@ def _line_count(log: Path) -> int:
     return len(log.read_text(encoding="utf-8", errors="replace").splitlines())
 
 
+# --- windowed detectors: brute force, credential stuffing, IDOR ------------------------------
+#
+# These are scored on rate and structure, not payload, so the value of a real round-trip is the
+# authentic timing and format rather than the request contents. The username rides the query
+# string because a combined log carries no body; a trailing ``ok=1`` is the one attempt the sink
+# answers 302, which is how a burst records a success. The IDOR account is stamped into the
+# ``remote_user`` field at freeze time, the same way the source address is -- a local capture
+# cannot supply either.
+
+WINDOWED_SRC = {"brute": "203.0.113.60", "stuffing": "203.0.113.61", "idor": "203.0.113.62"}
+BENIGN_WIN_SRC = {"auth": "198.51.100.30", "access": "198.51.100.31"}
+
+
+def _get(base: str, path: str, params: dict[str, str], pause: float) -> None:
+    query = f"?{urllib.parse.urlencode(params)}" if params else ""
+    try:
+        urllib.request.urlopen(f"{base}{path}{query}", timeout=5).read()
+    except urllib.error.HTTPError:
+        pass
+    except OSError as exc:
+        print(f"  transport error on {path}: {exc}", file=sys.stderr)
+    time.sleep(pause)
+
+
+def _brute_force(base: str, pause: float) -> None:
+    for _ in range(15):  # one account, one source, a sustained failed-password burst
+        _get(base, "/login", {"username": "alice"}, pause)
+    _get(base, "/login", {"username": "alice", "ok": "1"}, pause)  # the burst then succeeds
+
+
+def _stuffing(base: str, pause: float) -> None:
+    for i in range(20):  # breadth across accounts, one source -- the stuffing signature
+        for _ in range(2):
+            _get(base, "/login", {"username": f"user{i:03d}"}, pause)
+    _get(base, "/login", {"username": "user007", "ok": "1"}, pause)  # one credential lands
+
+
+def _idor(base: str, pause: float) -> None:
+    # phase 1: read one's own orders to mature the baseline -- a cold-start account stays silent
+    own = list(range(1000, 1020))
+    for _ in range(2):
+        random.Random(42).shuffle(own)
+        for oid in own:
+            _get(base, f"/api/orders/{oid}", {}, pause)
+    # phase 2: enumerate outside the learned range -- the deviation the detector catches
+    for oid in range(8001, 8013):
+        _get(base, f"/api/orders/{oid}", {}, pause)
+
+
+def _benign_auth(base: str, pause: float) -> None:
+    for user in ("bob", "carol", "dave"):  # a mistype then a success -- ordinary, must stay silent
+        _get(base, "/login", {"username": user}, pause)
+        _get(base, "/login", {"username": user, "ok": "1"}, pause)
+
+
+def _benign_access(base: str, pause: float) -> None:
+    for oid in (8001, 8007, 8003, 8001, 8009):  # own records, not a sequential walk
+        _get(base, f"/api/orders/{oid}", {}, pause)
+
+
+def _stamp(lines: list[str], source: str, user: str) -> list[str]:
+    """Rewrite the loopback source and the ``remote_user`` field of a captured combined line."""
+    out = []
+    for line in lines:
+        parts = line.split(" ", 3)
+        parts[0], parts[2] = source, user
+        out.append(" ".join(parts))
+    return out
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default="http://127.0.0.1:8080", help="nginx sink base URL")
@@ -246,6 +317,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         written = _freeze(captured, args.out / fixture, source_for)
         print(f"{name}: {written} lines -> {fixture}")
+
+    # Windowed scenarios, spaced so their timestamps span seconds the way a real burst does.
+    windowed = (
+        ("brute", _brute_force, "web_brute_force_captured_access.log", WINDOWED_SRC["brute"], "-"),
+        (
+            "stuffing",
+            _stuffing,
+            "web_credential_stuffing_captured_access.log",
+            WINDOWED_SRC["stuffing"],
+            "-",
+        ),
+        ("idor", _idor, "web_idor_captured_access.log", WINDOWED_SRC["idor"], "mallory"),
+        (
+            "benign-auth",
+            _benign_auth,
+            "web_benign_auth_captured_access.log",
+            BENIGN_WIN_SRC["auth"],
+            "-",
+        ),
+        (
+            "benign-access",
+            _benign_access,
+            "web_benign_access_captured_access.log",
+            BENIGN_WIN_SRC["access"],
+            "carol",
+        ),
+    )
+    for name, scenario, fixture, source, user in windowed:
+        before = _line_count(args.nginx_log)
+        scenario(args.base, max(args.pause, 0.15))
+        captured = _stamp(_capture(args.nginx_log, before), source, user)
+        (args.out / fixture).write_text("\n".join(captured) + "\n", encoding="utf-8")
+        print(f"{name}: {len(captured)} lines -> {fixture}")
     return 0
 
 

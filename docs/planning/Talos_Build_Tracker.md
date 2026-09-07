@@ -870,9 +870,13 @@ the gate below is not met by them.
 - [x] Real internet scanner traffic (400 lines: `.git`, `.env`, `/etc/passwd`, traversal) measured
       locally → **0 false positives**. Not committed: the `x-forwarded-for` column carries real
       end-client IPs behind Cloudflare, so it stays off a public repo.
-- [ ] **Windowed corpus still synthetic** — brute force, credential stuffing, RDP, IDOR. Real HTTP
-      round-trips add nothing there (rate/structure, not payload), so they are lower priority, but
-      the counts are small and a larger synthesised corpus would firm up the numbers.
+- [x] **Web windowed corpus captured** — `web_brute_force_captured_access.log`,
+      `web_credential_stuffing_captured_access.log`, `web_idor_captured_access.log`, plus two benign
+      counterparts. Real login bursts and an IDOR walk (baseline-prime then enumerate) through nginx.
+      All three detectors measured 1.00/1.00 on them; the benign captures stay silent. Corpus now 459
+      events over 16 logs.
+- [ ] **SSH/RDP stay synthetic** — capturing them needs a live sshd/RDP service and a brute-force
+      tool (also Defender-flagged); not worth standing up on the dev box. Documented in the harness.
 - [ ] **Hard negatives** — the calibration blocker below. The corpus still produces zero wrong
       verdicts, so calibration is unmeasurable. Needs inputs a detector gets *wrong*.
 - [ ] `tests/fixtures/expected/` reports for the new captured fixtures (payload detectors are

@@ -1,5 +1,14 @@
 # Changelog — Web Broken Access Control (IDOR)
 
+## 2026-09-07 — real captured fixture (P8)
+
+- Added `web_idor_captured_access.log`: a real IDOR enumeration through nginx — a baseline-priming
+  phase (the account reading its own orders) followed by a sequential walk outside that range. Made
+  by `scripts/capture_web_attack_corpus.py`, wired into the P8 harness.
+- Detected at **confidence 0.90**, precision 1.00. A captured benign counterpart — the same account
+  reading a few of its own records, not a walk — stays silent.
+
+
 ## 2026-09-04 — the detector, and the P6 gate (P6.2)
 
 - Added `DeviationScorer`: four weighted features into a deterministic score, the `heavy`-tier

@@ -83,10 +83,17 @@ class Case:
 #: The labelled corpus. Every attack case needs a benign counterpart in the same domain, or its
 #: precision figure is unmeasurable -- see plan P8.
 CORPUS: tuple[Case, ...] = (
+    # Network stays synthetic: SSH/RDP brute force cannot be captured without standing up a live
+    # sshd/RDP service and a brute-force tool, which is not worth the exposure on a dev box.
     Case("network_ssh_brute_force_sshd.log", "network", "brute_force"),
     Case("network_rdp_brute_force_security.log", "network", "brute_force"),
     Case("web_credential_stuffing_access.log", "web", "credential_stuffing"),
     Case("web_idor_enumeration_combined.log", "web", "idor"),
+    # The captured windowed fixtures: real login bursts and an IDOR walk through nginx, so the
+    # timing and format are authentic. Made by scripts/capture_web_attack_corpus.py, 2026-09-07.
+    Case("web_brute_force_captured_access.log", "web", "brute_force"),
+    Case("web_credential_stuffing_captured_access.log", "web", "credential_stuffing"),
+    Case("web_idor_captured_access.log", "web", "idor"),
     # The hand-built payload fixtures: small, and every line hand-chosen. They stay because the
     # P4 gate is measured against them and they must not silently change.
     Case("web_sql_injection_mixed_waf.log", "web", "sql_injection", per_line=True),
@@ -100,6 +107,10 @@ CORPUS: tuple[Case, ...] = (
     Case("web_benign_traffic_combined.log", "web", None),
     Case("web_benign_captured_access.log", "web", None),
     Case("web_idor_benign_access_combined.log", "web", None),
+    # Captured benign counterparts: an ordinary mistype-then-succeed login, and an account reading
+    # its own records rather than walking them. Both must stay silent.
+    Case("web_benign_auth_captured_access.log", "web", None),
+    Case("web_benign_access_captured_access.log", "web", None),
 )
 
 
