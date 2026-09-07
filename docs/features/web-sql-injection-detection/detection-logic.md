@@ -11,8 +11,9 @@ body. Headers are deliberately excluded — see the false-positive table.
 
 | Class | Rules | Decisive? |
 |---|---|---|
-| `tautology` | quoted boolean equality (`' OR '1'='1`), numeric always-true (`OR 1=1`), quote-terminated comment (`admin'--`) | yes |
+| `tautology` | quoted boolean equality (`' OR '1'='1`), the parenthesised bypass (`') OR ('1'='1`, `1) OR (1=1`), numeric always-true (`OR 1=1`), quote-terminated comment (`admin'--`) | yes |
 | `union` | `UNION SELECT`, comment-padded `UNION/**/SELECT`, `FROM information_schema.*` | yes |
+| `error_based` | `extractvalue(`, `updatexml(`, `exp(`, `floor(rand(`, `procedure analyse(` — MySQL error oracles no application sends in a parameter | yes |
 | `stacked` | `; DROP|INSERT|UPDATE...`, `EXEC xp_*` | yes |
 | `blind` | time delay (`SLEEP(`, `WAITFOR DELAY`) — decisive; boolean probe (`AND 1=2`), conditional substring — judged | mixed |
 | `evasion` | inline comment inside a keyword (`SEL/**/ECT`) — decisive; double-encoded quote — judged; long hex, bare comment marker — corroboration only | mixed |

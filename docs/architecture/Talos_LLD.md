@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.9 (2026-08-19) — see §16
+**Revision:** 1.15 (2026-09-07) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
 **Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the current slice (Web + Network) — a limit on breadth only, see HLD §1.5. Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
@@ -392,11 +392,17 @@ class WebTypeClassifier(TypeClassifier):
 **Pre-filter pattern classes** (over decoded `query_params` + `body`):
 | Class | Example signal |
 |---|---|
-| Tautology | `' OR '1'='1`, `OR 1=1--` |
+| Tautology | `' OR '1'='1`, `OR 1=1--`, and the parenthesised bypass `') OR ('1'='1`, `1) OR (1=1` |
 | UNION-based | `UNION SELECT`, `UNION ALL SELECT` |
+| Error-based | `extractvalue(`, `updatexml(`, `exp(`, `floor(rand(`, `procedure analyse(` — MySQL internals no application sends in a parameter |
 | Comment/evasion | `--`, `#`, `/**/`, mixed-case `UnIoN` |
 | Stacked queries | `; DROP`, `; INSERT` |
 | Blind (boolean/time) | `AND SLEEP(`, `WAITFOR DELAY`, `AND 1=1`/`AND 1=2` pairs |
+
+The tautology and error-based rows were widened in revision 1.15 after P8's captured corpus showed
+the parenthesised and error-based families walked past the original table. The residual static-path
+misses — subquery booleans, character-at-a-time extraction, hex tautology — stay borderline by
+design and route to the model tier.
 
 **Algorithm**
 ```python
@@ -945,6 +951,27 @@ until P6.0 ports them (HLD §7.1 stages SQLite through P5), and `asyncpg` is not
 | **Retention: `VerdictLogStore.prune()` at server start** | §4.2, §10 | The incident log grew without bound — survivable for a scan, not for a service. One dated delete at startup, `retention_days` (90), `0` keeps everything, a failure is logged and the service starts anyway. A scan never prunes: deleting history as a side effect of reading a log file would be indefensible. Partitioning by month is the upgrade path, which PostgreSQL does natively and SQLite could not have. |
 | **`scripts/replay_log_file.py` cut** | §2.1 tree | It duplicates `talos replay`. Two implementations of one job is what R3 exists to prevent, and standards §1.3 makes the console subcommand the entry point. `generate_sample_logs.py` stays: synthesising a corpus is a different job, and every corpus in it is paired with the benign traffic it must be told apart from. |
 | **`EventWindowStore` stays RAM-only** | §12 | Persisting every event on the hot path, or replaying history at startup, is larger than the surface it protects, and the cost of a restart is a burst resuming its count rather than a wrong verdict. Deferred with a trigger: P8 measurement showing restarts affect recall, or a deployment where restarts are routine. |
+
+### 16.15 Revision 1.15 — SQL injection recall closed against a real corpus, P8.1–P8.2 (2026-09-07)
+
+The P8 measurement harness (`tests/e2e/metrics_harness.py`) exposed what the hand-built payload
+fixture could not: on 37 real SQL injection strings fired through nginx over a real HTTP round-trip,
+the static path caught 24 (recall 0.65), well under the 0.85 target. The synthetic 8-line fixture
+had scored 1.00 because it contained only payloads the original rules already matched — a corpus
+grading its own author.
+
+| Change | Where | Why |
+|---|---|---|
+| **Tautology rule widened to the parenthesised bypass** | §7.1 | `') OR ('1'='1` and `1) OR (1=1` broke the original pattern: the closing paren of the broken subexpression sat between the quote and the operator. An optional `\)?`/`\(?` admits it. Precision unchanged — the rule still demands an operator and a comparison, so `O'Brien` cannot reach it. |
+| **New `error_based` class** | §7.1 | `extractvalue(`, `updatexml(`, `exp(`, `floor(rand(`, `procedure analyse(` — error-based oracles that leak results through a forced database error. No application sends these MySQL internals in a parameter, so the bare call is unambiguous. This whole family was absent. |
+| **Recall 0.65 → 0.89, precision held at 1.00** | §7.1 | The two additions clear the target on the captured corpus and the 0 false positives on the benign corpus is unchanged. The residual misses — subquery booleans, `ASCII(SUBSTRING(`, hex tautology — stay borderline by design and route to the model tier; the static path is not asked to carry them. |
+| **XSS unchanged, measured at 0.98** | §7.2 | 43 of 44 real payloads caught statically. The one miss is a deliberately double-encoded string, which the once-only decode (§5.2) leaves as `%2527…` — a known, documented boundary, not a rule gap. |
+| **Captured corpus committed; capture method scripted** | §2.1 tree | `scripts/capture_web_attack_corpus.py` fires public attack strings through an nginx sink (stdlib client, because Defender quarantines sqlmap/nikto) and freezes the log. The three fixtures join the hand-built ones in the harness; both are measured. |
+| **Real internet scanner traffic measured, not committed** | — | 400 lines of live scanner noise (`.git`, `.env`, `/etc/passwd`, traversal) from a production host produced 0 false positives. Not committed: the `x-forwarded-for` column carries real end-client addresses behind Cloudflare, so the log is kept off a public repo. |
+
+Calibration remains unmeasurable: the corpus still produces zero wrong verdicts, so every
+confidence band reads 1.00 whatever it claimed. The gate records this and skips rather than
+reporting a calibration it did not measure. Closing it needs hard negatives — a P8.2 corpus item.
 
 ---
 *End of LLD.*

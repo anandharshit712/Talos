@@ -87,6 +87,7 @@ NAME_CHECK_EXEMPT = frozenset({"__init__.py", "__main__.py", "py.typed", "confte
 SCRIPT_VERBS = (
     "check",
     "run",
+    "capture",
     "generate",
     "replay",
     "apply",

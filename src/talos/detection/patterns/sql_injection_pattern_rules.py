@@ -31,21 +31,34 @@ SQL_INJECTION_RULES: tuple[PatternRule, ...] = (
         pattern_class="tautology",
         name="quoted_boolean_equality",
         pattern=re.compile(
-            rf"{_QUOTE}\s*(?:or|and)\s+{_QUOTE}?\w+{_QUOTE}?\s*(?:=|<>|!=|like)\s*"
+            rf"{_QUOTE}\s*\)?\s*(?:or|and)\s+\(?\s*{_QUOTE}?\w+{_QUOTE}?\s*(?:=|<>|!=|like)\s*"
             rf"{_QUOTE}?\w+{_QUOTE}?",
             _I,
         ),
         unambiguous=True,
-        note="' OR '1'='1 -- requires a quote break plus an operator plus a comparison, so a "
-        "surname like O'Brien or a phrase like 'and more' cannot reach it",
+        note="' OR '1'='1, and the parenthesised bypass ') OR ('1'='1 -- a quote break, an "
+        "optional closing paren from the broken subexpression, an operator, and a comparison. "
+        "A surname like O'Brien or a phrase like 'and more' still cannot reach it: there is no "
+        "comparison after the word",
     ),
     PatternRule(
         pattern_class="tautology",
         name="numeric_always_true",
-        pattern=re.compile(r"\b(?:or|and)\s+(\d+)\s*=\s*\1\b", _I),
+        pattern=re.compile(r"\b(?:or|and)\s+\(?\s*(\d+)\s*=\s*\1\b", _I),
         unambiguous=True,
-        note="OR 1=1, AND 7=7 -- the same number both sides is the tell; 'and 1=2' is caught by "
-        "the blind-pair rule instead",
+        note="OR 1=1, AND 7=7, and the parenthesised 1) OR (1=1 -- the same number both sides is "
+        "the tell; 'and 1=2' is caught by the blind-pair rule instead",
+    ),
+    PatternRule(
+        pattern_class="error_based",
+        name="error_based_extraction_function",
+        pattern=re.compile(
+            r"\b(?:extractvalue|updatexml|exp|floor\s*\(\s*rand|procedure\s+analyse)\s*\(", _I
+        ),
+        unambiguous=True,
+        note="extractvalue(, updatexml(, exp(, floor(rand(, procedure analyse( -- error-based "
+        "oracles that leak query results through a forced database error. No application sends "
+        "these MySQL internals in a request parameter, so the bare function call is decisive",
     ),
     PatternRule(
         pattern_class="tautology",

@@ -32,6 +32,14 @@ def hits(payload: str):
         ("1; EXEC xp_cmdshell('whoami')", "stacked"),
         ("x' AND SLEEP(5)--", "blind"),
         ("1 AND 1=2", "blind"),
+        # Parenthesised bypasses -- the broken subexpression leaves a paren before the operator.
+        # Caught on real captures that the hand-built fixture missed (P8).
+        ("') OR ('1'='1", "tautology"),
+        ("1) OR (1=1", "tautology"),
+        # Error-based extraction: MySQL internals no application sends in a parameter.
+        ("1' AND extractvalue(1,concat(0x7e,version()))--", "error_based"),
+        ("1' AND updatexml(1,concat(0x7e,(SELECT user())),1)--", "error_based"),
+        ("1' PROCEDURE ANALYSE(EXTRACTVALUE(1,CONCAT(0x3a,version())),1)--", "error_based"),
     ],
 )
 def test_attack_payload_fires_its_class(payload: str, expected_class: str) -> None:
@@ -48,6 +56,8 @@ def test_attack_payload_fires_its_class(payload: str, expected_class: str) -> No
         "2026; DROP TABLE invoices",
         "x' AND SLEEP(5)--",
         "1 UNION/**/SELECT null,version()",
+        "') OR ('1'='1",
+        "1' AND extractvalue(1,concat(0x7e,version()))--",
     ],
 )
 def test_decisive_payloads_need_no_model(payload: str) -> None:

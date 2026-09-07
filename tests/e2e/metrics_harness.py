@@ -87,9 +87,18 @@ CORPUS: tuple[Case, ...] = (
     Case("network_rdp_brute_force_security.log", "network", "brute_force"),
     Case("web_credential_stuffing_access.log", "web", "credential_stuffing"),
     Case("web_idor_enumeration_combined.log", "web", "idor"),
+    # The hand-built payload fixtures: small, and every line hand-chosen. They stay because the
+    # P4 gate is measured against them and they must not silently change.
     Case("web_sql_injection_mixed_waf.log", "web", "sql_injection", per_line=True),
     Case("web_xss_mixed_combined.log", "web", "xss", per_line=True),
+    # The captured payload fixtures: real attack strings fired through nginx over a real HTTP
+    # round-trip, so the pattern matcher meets encodings it did not author. These are what turned
+    # the payload-detector recall from a smoke test into a measurement -- see the feature
+    # testing.md. Provenance: scripts/capture_web_attack_corpus.py, 2026-09-07.
+    Case("web_sql_injection_captured_access.log", "web", "sql_injection", per_line=True),
+    Case("web_xss_captured_access.log", "web", "xss", per_line=True),
     Case("web_benign_traffic_combined.log", "web", None),
+    Case("web_benign_captured_access.log", "web", None),
     Case("web_idor_benign_access_combined.log", "web", None),
 )
 
@@ -344,9 +353,16 @@ async def _run_case(case: Case, settings: TalosSettings, out: Measurement) -> No
             collector.emit(report)
 
     verdicts = [verdict for recorder in recorders for verdict in recorder.verdicts]
+    # Lines that fired the case's *own* technique, kept per-technique. A payload line that trips a
+    # different detector (an XSS string the SQLi rules also match) is collateral, not a true
+    # positive for this case -- counting it as one would inflate recall with the wrong detector.
+    fired_lines = {
+        event_id
+        for verdict in verdicts
+        if verdict.attack_detected and verdict.technique == case.technique
+        for event_id in verdict.event_ids
+    }
     for verdict in verdicts:
-        if verdict.attack_detected:
-            fired_lines.update(verdict.event_ids)
         if verdict.model.used_llm:
             out.used_llm = True
         _bucket(out, verdict, attack_log=not case.is_benign)

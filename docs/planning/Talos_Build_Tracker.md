@@ -851,16 +851,32 @@ fixture 6. That is not a precision result, it is a smoke test with arithmetic at
 figures are recorded so the harness has a known-good starting point; they are not quotable and
 the gate below is not met by them.
 
-### P8.2 Corpus — **not started, and the real work**
+### P8.2 Corpus — **payload detectors done; windowed still synthetic**
 
-- [ ] Full labeled corpus under `tests/fixtures/logs/` + `tests/fixtures/expected/`
-      (Juice Shop, PortSwigger, Cowrie exports, synthesised RDP bursts; DVWA dropped — PHP and
-      MySQL natively on the dev box costs more than the traffic is worth)
-- [ ] **Every attack fixture has a benign counterpart** — recall without precision is not a result
-- [ ] **Hard negatives specifically** — see the calibration open item below: the corpus needs
-      inputs that a detector gets *wrong*, or calibration cannot be measured at all
-- [ ] Corpus route decided by the owner: local nginx + Juice Shop + sqlmap (no PHI, everything
-      committable) versus sanitised real traffic from the HMS/LOPS hosts for the benign half
+- [x] **Real payload corpus captured** via nginx + `scripts/capture_web_attack_corpus.py`. sqlmap
+      and nikto were the plan; both are quarantined by Defender as `HackTool` on sight (real-time
+      protection on, verified), so the driver is a stdlib client firing public attack strings
+      through an nginx sink. The realism that matters for a payload detector — the encoding and the
+      server-side logging — is preserved; only the delivery agent changed. Juice Shop dropped (npm
+      package unpublished, `ENOVERSIONS`); DVWA dropped (native PHP+MySQL on Windows not worth it).
+- [x] Three captured fixtures committed: `web_sql_injection_captured_access.log` (37),
+      `web_xss_captured_access.log` (38), `web_benign_captured_access.log` (25). Wired into the
+      harness beside the hand-built ones; both are measured.
+- [x] **The finding that justified the whole exercise.** Real SQLi payloads dropped the static-path
+      recall to **0.65** — the synthetic 8-line fixture had scored 1.00 only because it held
+      payloads the rules already matched. Two precise rule additions (parenthesised tautology, a new
+      `error_based` class) lifted it to **0.89** with precision unchanged at 1.00. LLD §16.15, and
+      the SQLi feature's changelog/testing/detection-logic all updated. XSS measured at 0.98.
+- [x] Real internet scanner traffic (400 lines: `.git`, `.env`, `/etc/passwd`, traversal) measured
+      locally → **0 false positives**. Not committed: the `x-forwarded-for` column carries real
+      end-client IPs behind Cloudflare, so it stays off a public repo.
+- [ ] **Windowed corpus still synthetic** — brute force, credential stuffing, RDP, IDOR. Real HTTP
+      round-trips add nothing there (rate/structure, not payload), so they are lower priority, but
+      the counts are small and a larger synthesised corpus would firm up the numbers.
+- [ ] **Hard negatives** — the calibration blocker below. The corpus still produces zero wrong
+      verdicts, so calibration is unmeasurable. Needs inputs a detector gets *wrong*.
+- [ ] `tests/fixtures/expected/` reports for the new captured fixtures (payload detectors are
+      per-line, so an expected-incident file is less load-bearing here than for the windowed ones)
 
 ### P8.3 Calibration and write-up
 
@@ -934,6 +950,7 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.15 | 2026-09-07 | **P8.2 payload corpus done, and a real recall gap closed.** Real SQLi/XSS payloads captured through nginx (stdlib driver — Defender quarantines sqlmap/nikto) dropped static SQLi recall to 0.65, hidden by the synthetic fixture that scored its own author 1.00. Two precise rule additions (parenthesised tautology, new `error_based` class) → 0.89, precision held. LLD bumped to 1.15 (§16.15); SQLi feature docs updated. 400 lines of real scanner traffic measured (0 FP), not committed — XFF carries real client IPs. Windowed corpus still synthetic; calibration still blocked on hard negatives. |
 | 1.14 | 2026-09-07 | **P8.1 recorded as done.** The metrics harness, its gate, and the baseline run — 0 false positives, 1.00 across the board, on a corpus too small for any of it to be quotable. Two findings carried forward: calibration cannot be measured without hard negatives, and the availability prober was failing healthy models on a single 503 (7/7 live once fixed, routing unchanged). CLAUDE.md's status line, four phases stale, corrected — and the pre-push doc rule added that should have caught it. |
 | 1.13 | 2026-09-04 | **P7 recorded as done.** Four routes, `talos serve` and `talos replay`, the sample-log generator, and two open items closed — the suppression filter that cleared itself when full, and the missing retention policy. `scripts/replay_log_file.py` cut as a duplicate of the subcommand. |
 | 1.12 | 2026-09-04 | **P6 recorded as done.** IDOR detection with object-level scope, the paired benign corpus producing nothing, and the four things building it exposed — including a CLI test suite that had been making live inference calls, and three routed models that had died. |

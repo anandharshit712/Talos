@@ -1,5 +1,21 @@
 # Changelog — Web SQL Injection Detection
 
+## 2026-09-07 — recall closed against a real corpus (P8)
+
+- The P8 harness fired 37 real SQLi strings through nginx over a real HTTP round-trip. The static
+  path caught 24 (recall **0.65**) — the synthetic 8-line fixture had scored 1.00 only because it
+  contained payloads the rules already matched.
+- **Widened the tautology rule** to the parenthesised bypass (`') OR ('1'='1`, `1) OR (1=1`): the
+  broken subexpression's paren sat between the quote and the operator. Precision unchanged.
+- **Added the `error_based` class**: `extractvalue(`, `updatexml(`, `exp(`, `floor(rand(`,
+  `procedure analyse(` — error-based oracles no application sends in a parameter. The family was
+  entirely absent.
+- Recall now **0.89** on the captured corpus, precision still **1.00** (0 false positives on the
+  benign corpus). The residual misses — subquery booleans, `ASCII(SUBSTRING(`, hex tautology —
+  stay borderline by design and route to the model tier.
+- Captured fixtures committed (`web_sql_injection_captured_access.log`); capture method scripted
+  at `scripts/capture_web_attack_corpus.py`. See LLD §16.15.
+
 ## 2026-08-18 — the flagship detector (P4)
 
 - Added `pattern_engine`: shared extraction, matching, evidence, and the three signal grades used
