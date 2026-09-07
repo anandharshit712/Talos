@@ -41,6 +41,11 @@ PROBE_MESSAGES = [{"role": "user", "content": "Reply with the single word: ok"}]
 PROBE_MAX_TOKENS = 8
 PROBE_TIMEOUT_S = 45.0
 
+#: Total attempts per model on a retryable answer (5xx, 429, transport). One more than
+#: ``llm.max_retries`` allows, so the probe is never the pessimistic half of the pair.
+PROBE_ATTEMPTS = 3
+PROBE_RETRY_DELAY_S = 2.0
+
 
 @dataclass
 class Probe:
@@ -85,28 +90,47 @@ def check_key(settings: TalosSettings, provider: str) -> str | None:
 
 
 def probe_model(settings: TalosSettings, probe: Probe, key: str) -> Result:
-    """Send one tiny completion and classify what came back."""
+    """Send one tiny completion and classify what came back, retrying like the real client.
+
+    The retry matters more here than it looks. A free-tier endpoint returns 503 under load
+    often enough that a single-shot probe reports a healthy model as dead -- and since the
+    routing config tells every session to run this before a phase gate, that reads as "re-route
+    it", which is how a working model gets replaced. ``ModelClient`` retries 5xx/429 before
+    falling back, so a probe that does not is not measuring what production does.
+    """
     profile = settings.provider_for(probe.provider)
     started = time.monotonic()
-    try:
-        response = httpx.post(
-            f"{profile.base_url.rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={
-                "model": probe.model,
-                "messages": PROBE_MESSAGES,
-                "max_tokens": PROBE_MAX_TOKENS,
-                "temperature": 0,
-            },
-            timeout=PROBE_TIMEOUT_S,
-        )
-    except httpx.HTTPError as exc:
-        return Result(probe, False, f"transport: {type(exc).__name__}", _ms(started))
+    detail = "no attempt made"
+    for attempt in range(PROBE_ATTEMPTS):
+        if attempt:
+            time.sleep(PROBE_RETRY_DELAY_S * attempt)
+        try:
+            response = httpx.post(
+                f"{profile.base_url.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={
+                    "model": probe.model,
+                    "messages": PROBE_MESSAGES,
+                    "max_tokens": PROBE_MAX_TOKENS,
+                    "temperature": 0,
+                },
+                timeout=PROBE_TIMEOUT_S,
+            )
+        except httpx.HTTPError as exc:
+            detail = f"transport: {type(exc).__name__}"
+            continue
 
-    elapsed = _ms(started)
-    if response.status_code == 200:
-        return Result(probe, True, _first_words(response.json()), elapsed)
-    return Result(probe, False, f"HTTP {response.status_code}: {_error_text(response)}", elapsed)
+        if response.status_code == 200:
+            note = _first_words(response.json())
+            if attempt:
+                note = f"{note} (after {attempt + 1} attempts)"
+            return Result(probe, True, note, _ms(started))
+
+        detail = f"HTTP {response.status_code}: {_error_text(response)}"
+        if response.status_code < 500 and response.status_code != 429:
+            break  # a 404 or a 403 is a verdict about the model, not about the moment
+
+    return Result(probe, False, detail, _ms(started))
 
 
 def _ms(started: float) -> int:

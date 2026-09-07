@@ -28,7 +28,7 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 | **P5** Auth failure + RDP | D10–D11 | Aug 27–28 | **done** | yes | yes |
 | **P6** Broken access control | D12–D14 | — | **done** | yes | yes |
 | **P7** Output surface | D15 | — | **done** | yes | yes |
-| **P8** Evaluation & calibration | D16–D17 | — | not started | — | — |
+| **P8** Evaluation & calibration | D16–D17 | — | **in progress** | — | — |
 | **P9** Demo & submission | D18 | — | not started | — | — |
 
 **Submission: 2026-10-09** (moved from 2026-09-04 by the owner on 2026-09-04). P0–P5 all landed by
@@ -822,14 +822,50 @@ stores plus a live API.
 
 ---
 
-## P8 — Evaluation & Calibration · D16–D17
+## P8 — Evaluation & Calibration · D16–D17 — **in progress**
 
-- [ ] `tests/e2e/metrics_harness.py` (~280) — precision / recall / F1, calibration buckets, latency
+### P8.1 The measurement harness — **done**
+
+- [x] `tests/e2e/metrics_harness.py` (367) — precision / recall / F1 per detector, confidence
+      bands, latency percentiles, JSON to `out/metrics/corpus_metrics.json`
+- [x] `tests/e2e/test_corpus_metrics_gate.py` (137) — the gate assertions over the harness
+- [x] The four labelling rules written down before any number was quoted: benign must be silent;
+      a matching technique on an attack log is a true positive; a *different* technique on an
+      attack log is collateral, not a false positive, because the traffic really is malicious;
+      windowed detectors score per log and payload detectors per line. Rule 4 is the one that
+      matters — scoring brute force per event counts the eleven attempts that *should not* fire
+      as misses, which makes recall meaningless.
+- [x] Verdicts captured by wrapping the registered domain agents, so calibration sees the
+      verdicts that never escalated **and** the real `EventOrchestrator` still runs. The
+      alternative was re-implementing `submit()` in the harness, which measures a pipeline that
+      does not exist.
+- [x] Fresh orchestrator per case — the event window and the suppression map are stateful, so a
+      shared one lets one log's traffic change another log's verdicts.
+- [x] Baseline run recorded, model off: **234 events, 8 logs, 25 incidents, 0 false positives**,
+      precision/recall/F1 = 1.00 for every technique, p50 0.07ms / p95 0.84ms per event (NFR-1
+      wants sub-second). `used_llm=false` throughout.
+
+**What the baseline run actually established, stated honestly:** every detector scores 1.00 on
+a corpus of **550 lines total**, of which the SQL injection fixture is 8 lines and the XSS
+fixture 6. That is not a precision result, it is a smoke test with arithmetic attached. The
+figures are recorded so the harness has a known-good starting point; they are not quotable and
+the gate below is not met by them.
+
+### P8.2 Corpus — **not started, and the real work**
+
 - [ ] Full labeled corpus under `tests/fixtures/logs/` + `tests/fixtures/expected/`
-      (Juice Shop, DVWA, PortSwigger, Cowrie exports, synthesised RDP bursts)
+      (Juice Shop, PortSwigger, Cowrie exports, synthesised RDP bursts; DVWA dropped — PHP and
+      MySQL natively on the dev box costs more than the traffic is worth)
 - [ ] **Every attack fixture has a benign counterpart** — recall without precision is not a result
+- [ ] **Hard negatives specifically** — see the calibration open item below: the corpus needs
+      inputs that a detector gets *wrong*, or calibration cannot be measured at all
+- [ ] Corpus route decided by the owner: local nginx + Juice Shop + sqlmap (no PHI, everything
+      committable) versus sanitised real traffic from the HMS/LOPS hosts for the benign half
+
+### P8.3 Calibration and write-up
+
 - [ ] Per-detector calibration curves written into `config/default.yaml` → `calibration:`
-- [ ] `docs/operations/Talos_Evaluation_Results.md` (~200)
+- [ ] `docs/operations/Talos_Evaluation_Results.md` (~200) — quotes `out/metrics/`
 - [ ] Every feature folder's `testing.md` updated with real numbers
 - [ ] Every feature `README.md` status advanced to `stable`
 - [ ] **Gate:** measured precision/recall/F1 per detector recorded; calibration verified per NFR-3
@@ -883,6 +919,9 @@ sequence should a phase overrun badly enough to need it again.
 | One incident per escalation, not per campaign | P2 | P8 | a burst that doubles re-reports; whether that is the right cadence is a calibration question |
 | **The API is single-process by construction** | P7 | P8+ | Two workers would each hold half the events, so a burst split between them might trip neither threshold. Not a tuning note — a deployment constraint. The fix is a shared event window (Redis, or the database); the trigger is needing more than one process |
 | Calibration curve values empty | P1 | P8 | shape fixed (`detector -> {parameter: float}`), values measured in P8 |
+| **Calibration is unmeasurable on the current corpus** | **P8.1** | P8.2 | The baseline run produces **zero** wrong verdicts, so every confidence band reads `observed = 1.00` whatever it claimed — a 0.65 band and a 0.95 band are indistinguishable. NFR-3 asks whether a 90%-confidence verdict is right 90% of the time, and that question needs verdicts that turned out **wrong**. The gate therefore records `calibration_measurable: false` and skips rather than reporting a calibration it did not measure. **The fix is corpus, not code:** hard negatives that a detector actually trips on. `test_calibration_is_reported_as_measurable_or_not` flips on its own once they exist |
+| Detectors are under-confident, not miscalibrated | P8.1 | P8.3 | Every band scores above its own claim (0.65 band → 1.00 observed). Harmless direction, so the gate asserts only `overconfidence` and reports the rest; tightening the emitted confidences is a P8.3 calibration-curve job once there is data to fit against |
+| `check_model_availability.py` had no retry | P8.1 | **done P8.1** | It reported `nvidia/nemotron-3-super-120b-a12b` as a hard FAIL on a single 503, and the routing comment tells every session to run it before a phase gate — so a healthy model reads as "re-route it". Now 3 attempts on 5xx/429/transport, break immediately on 4xx. Re-probe with the fix: **7/7 live**, routing unchanged |
 | `EventWindowStore` is RAM-only | P2 | **P8 decision** | A restart mid-burst loses in-flight windows, so a burst resumes counting from zero. **Deliberately not fixed in P7**: persisting every event on the hot path, or replaying history at startup, is larger than the surface it protects, and the cost is a delayed verdict rather than a wrong one. Trigger: P8 measurement showing restarts affect recall, or a deployment where restarts are routine |
 | ~~No retention policy on `verdict_log`~~ | P2 | **done P7** | `VerdictLogStore.prune()` and a dated delete at server startup, `talos.storage.database.retention_days` (90; `0` keeps everything). Partitioning is the upgrade if the table outgrows it |
 | ~~Stores hold one connection, no reconnect~~ | P2 | **done P6.0** | Closed by `postgres_connection_pool.py`: asyncpg replaces a dead connection on the next acquire |
@@ -895,6 +934,7 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.14 | 2026-09-07 | **P8.1 recorded as done.** The metrics harness, its gate, and the baseline run — 0 false positives, 1.00 across the board, on a corpus too small for any of it to be quotable. Two findings carried forward: calibration cannot be measured without hard negatives, and the availability prober was failing healthy models on a single 503 (7/7 live once fixed, routing unchanged). CLAUDE.md's status line, four phases stale, corrected — and the pre-push doc rule added that should have caught it. |
 | 1.13 | 2026-09-04 | **P7 recorded as done.** Four routes, `talos serve` and `talos replay`, the sample-log generator, and two open items closed — the suppression filter that cleared itself when full, and the missing retention policy. `scripts/replay_log_file.py` cut as a duplicate of the subcommand. |
 | 1.12 | 2026-09-04 | **P6 recorded as done.** IDOR detection with object-level scope, the paired benign corpus producing nothing, and the four things building it exposed — including a CLI test suite that had been making live inference calls, and three routed models that had died. |
 | 1.11 | 2026-09-04 | Storage gate passed against live PostgreSQL 17.2: 672 tests, 0 skipped, concurrent writers clean, `talos scan` writing real incidents. Two defects the live run exposed — migrations ordered by filename rather than stamp, and a pool shared across event loops. |

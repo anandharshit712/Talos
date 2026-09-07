@@ -27,10 +27,13 @@ Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
 ## Where the build stands
 
-**P0–P7 are done and pushed. P8 (evaluation & calibration) is next.**
+**P0–P7 are done and pushed. P8 (evaluation & calibration) is in progress, unpushed.**
 Storage is on PostgreSQL, the FastAPI surface is up (`talos serve`, `talos replay`), and both
-domains' detectors are built. P8 measures them: precision / recall / F1 per detector and the
-calibration curves that are still empty in `config/default.yaml`.
+domains' detectors are built. **P8.1 (the metrics harness) is done**; the gate is not met, because
+what is left is the corpus. Today's corpus is 550 lines and scores 1.00 on everything, which is a
+smoke test with arithmetic attached, not a precision result. Two consequences to know before
+touching P8: calibration is **unmeasurable** until the corpus contains inputs a detector gets
+wrong, and `config/default.yaml` → `calibration:` stays empty until then.
 [docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) is the live record —
 every phase, section, file, test, and gate. **Tick its boxes in the same commit as the work.**
 
