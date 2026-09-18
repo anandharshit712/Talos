@@ -24,6 +24,7 @@ class _ScriptedClient(ModelClient):
         self.reply = reply
         self.error = error
         self.calls: list[str] = []
+        self.budgets: list[int] = []
 
     async def complete(
         self,
@@ -35,6 +36,7 @@ class _ScriptedClient(ModelClient):
         timeout_s: float,
     ) -> dict[str, Any]:
         self.calls.append(model)
+        self.budgets.append(max_tokens)
         if self.error is not None:
             raise ModelError(self.error)
         assert self.reply is not None
@@ -173,3 +175,19 @@ def test_disabled_router_returns_none_rather_than_raising(
     router = build_router(settings)
     component = next(iter(settings.routing))
     assert asyncio.run(router.complete_for(component, prompt="p", schema=SCHEMA)) is None
+
+
+def test_reasoning_headroom_is_added_to_the_callers_budget(settings: TalosSettings) -> None:
+    """A caller budgets its answer; a reasoning model has to think before it writes one.
+
+    Measured against nvidia/nemotron-3.5-lightning-30b-a3b: at the narrative detector's own 220
+    tokens it truncates mid-thought and never emits the JSON, so every routed call fell through
+    to the templated path. The headroom is the fix, and it belongs here rather than at each call
+    site -- a detector must not have to know whether its model reasons out loud.
+    """
+    route = settings.routing[ROUTED]
+    client = _ScriptedClient({"narrative": "ok"})
+    router = ModelRouter(settings, {route.provider: client})
+    asyncio.run(router.complete_for(ROUTED, prompt="p", schema=SCHEMA, max_tokens=220))
+    assert client.budgets == [220 + settings.llm.reasoning_token_headroom]
+    assert settings.llm.reasoning_token_headroom >= 1200

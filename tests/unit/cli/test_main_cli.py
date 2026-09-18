@@ -13,6 +13,7 @@ documented off switch and belongs here.
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -298,3 +299,31 @@ def test_replay_reports_a_rejected_event_without_stopping(
 def test_replay_of_a_missing_file_exits_two(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["replay", "no-such-file.log"]) == 2
     assert "no such log file" in capsys.readouterr().err
+
+
+def test_main_makes_stdout_carry_non_ascii(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A report that cannot be printed is a report that was never delivered.
+
+    The Windows console hands Python a cp1252 stream, and one unencodable character raises at
+    write time -- after detection has already run. It was reached first by a model narrative
+    carrying U+2011, but a UTF-8 payload in a request path lands in the evidence verbatim, so
+    the crash is attacker-triggerable without any model at all.
+    """
+    unencodable = "non\u2011breaking"  # U+2011, what the narrative model actually wrote
+    console = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+    monkeypatch.setattr(main_cli.sys, "stdout", console)
+    with pytest.raises(UnicodeEncodeError):
+        console.write(unencodable)
+
+    main_cli._force_utf8_streams()
+
+    console.write(unencodable)  # the same write, now survivable
+    assert console.encoding == "utf-8"
+
+
+def test_force_utf8_streams_tolerates_a_stream_it_cannot_reconfigure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pytest's own capture object has no reconfigure(); the CLI must still start."""
+    monkeypatch.setattr(main_cli.sys, "stdout", io.StringIO())
+    main_cli._force_utf8_streams()  # must not raise

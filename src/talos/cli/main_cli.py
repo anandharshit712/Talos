@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 import sys
@@ -456,7 +457,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _force_utf8_streams() -> None:
+    """Make stdout and stderr carry any character a report can contain.
+
+    JSON is UTF-8 by specification, but the Windows console hands Python a cp1252 stream, and
+    ``str.write`` of one unencodable character raises rather than mangling it -- so a single
+    non-ASCII byte anywhere in a report kills the run *at output time*, after the detection
+    work is done. Observed with a model narrative containing a non-breaking hyphen (U+2011);
+    the same crash is reachable without a model at all, because a UTF-8 payload in a request
+    path is copied verbatim into the evidence. That makes it attacker-triggerable, and
+    "fail-safe for reporting" does not survive a report that cannot be printed.
+
+    ``backslashreplace`` is the belt to that braces: on a console that still cannot encode, an
+    escape sequence is printed instead of an exception being raised.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue  # a stream replaced by a test or a harness; nothing to reconfigure
+        # A stream that refuses to be reconfigured is still a usable stream.
+        with contextlib.suppress(OSError, ValueError):
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _force_utf8_streams()
     # Provider keys live in .env and are not settings fields, so nothing loads them unless an
     # entry point does. Before this call the CLI ran with three keys on disk and no providers.
     load_env_file()

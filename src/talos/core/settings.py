@@ -276,6 +276,15 @@ class LlmSettings(_Block):
     fallback_confidence_penalty: float = Field(default=0.85, gt=0.0, le=1.0)
     max_payload_chars: int = Field(default=2000, gt=0)
 
+    reasoning_token_headroom: int = Field(default=1200, ge=0)
+    """Tokens added to every caller's ``max_tokens`` to pay for a reasoning model's thinking.
+
+    A caller asks for the budget its *answer* needs -- 220 tokens for a narrative. A reasoning
+    model spends its budget thinking first, so that ceiling cuts it off mid-thought and the
+    answer never arrives: measured, ``nemotron-3.5-lightning`` truncates at 300 and returns
+    clean JSON at 1200. ``max_tokens`` is a ceiling, not a spend, so the headroom costs a
+    non-reasoning model nothing."""
+
 
 class ApiSettings(_Block):
     """Where the report API listens (LLD 2.1, P7)."""
@@ -316,6 +325,14 @@ class ModelRoute(_Block):
     provider: str = Field(min_length=1)
     model: str = Field(min_length=1)
     fallback: FallbackRoute | None = None
+
+    max_tokens_ceiling: int | None = Field(default=None, gt=0)
+    """The largest ``max_tokens`` this route's models will accept, when one of them is small.
+
+    Left unset for a normal generative model, where the ceiling is far above anything a detector
+    asks for. It exists for the classifier-sized models: ``llama-prompt-guard-2-86m`` rejects any
+    request above 512 with a ``400``, so the reasoning headroom -- harmless everywhere else --
+    would make the route unusable. Set it to the smaller of the primary's and the fallback's."""
 
 
 # ---------------------------------------------------------------------------

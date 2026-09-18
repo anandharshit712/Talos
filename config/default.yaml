@@ -62,6 +62,12 @@ talos:
     # Attacker-controlled telemetry is truncated to this many characters before it is
     # embedded in a prompt as delimited data (HLD 11/13 prompt-injection hardening).
     max_payload_chars: 2000
+    # Added to every caller's max_tokens so a reasoning model can think before it answers.
+    # A detector asks for the budget its answer needs; a reasoning model spends that budget
+    # thinking and gets cut off before the JSON starts. Measured on
+    # nvidia/nemotron-3.5-lightning-30b-a3b: 300 truncates mid-thought, 1200 answers cleanly.
+    # max_tokens is a ceiling, not a spend -- a model that does not think pays nothing for it.
+    reasoning_token_headroom: 1200
 
   output:
     sinks: [stdout, json_file]

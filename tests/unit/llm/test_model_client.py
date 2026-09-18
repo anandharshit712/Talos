@@ -38,6 +38,16 @@ def test_reasoning_content_is_the_fallback() -> None:
     assert extract_reply(_body(content=None, reasoning="the answer")) == "the answer"
 
 
+def test_groq_spells_the_reasoning_field_without_the_suffix() -> None:
+    """Groq returns ``reasoning``; NIM returns ``reasoning_content`` -- same gpt-oss weights.
+
+    Reading only the NIM spelling raised "completion carried no text" against a model that had
+    answered perfectly, sending every gpt-oss route to its fallback.
+    """
+    body = {"choices": [{"message": {"content": None, "reasoning": "the answer"}}]}
+    assert extract_reply(body) == "the answer"
+
+
 def test_empty_reply_is_an_error_not_an_empty_verdict() -> None:
     with pytest.raises(ModelError):
         extract_reply(_body(content="   ", reasoning=None))

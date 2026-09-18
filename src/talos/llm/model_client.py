@@ -146,13 +146,17 @@ class OpenAiCompatibleClient(ModelClient):
 def extract_reply(payload: dict[str, Any]) -> str:
     """Pull the reply text out of a chat-completions body.
 
-    Falls back to ``reasoning_content``: several models leave ``content`` null and answer there.
+    Falls back to the reasoning field: several models leave ``content`` null and answer there.
+    **Providers disagree on its name.** NVIDIA NIM returns ``reasoning_content``; Groq returns
+    ``reasoning`` for the same ``openai/gpt-oss-*`` weights. Reading only the first name made a
+    working Groq model look like an outage ("completion carried no text"), which is what sent
+    every gpt-oss route to its fallback for the whole of P8.
     """
     try:
         message = payload["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as exc:
         raise ModelError(f"unexpected completion shape: {str(payload)[:120]}") from exc
-    for field in ("content", "reasoning_content"):
+    for field in ("content", "reasoning_content", "reasoning"):
         value = message.get(field)
         if isinstance(value, str) and value.strip():
             return value

@@ -31,14 +31,22 @@ import httpx
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from talos.core.error_types import ModelError  # noqa: E402 - path set up immediately above
 from talos.core.settings import (  # noqa: E402 - path set up immediately above
     TalosSettings,
     load_env_file,
 )
+from talos.llm.model_client import extract_reply  # noqa: E402 - path set up immediately above
 
 #: Small enough to cost nothing, long enough to prove the model generates.
 PROBE_MESSAGES = [{"role": "user", "content": "Reply with the single word: ok"}]
-PROBE_MAX_TOKENS = 8
+
+#: Large enough that a reasoning model reaches its answer. At 8 tokens ``gpt-oss-20b`` and
+#: ``nemotron-3.5-lightning`` both spend the whole budget thinking and return nothing, which this
+#: script reported as "ok, empty reply" -- a pass for two models the pipeline could not use. The
+#: probe now buys the same thinking headroom the router does, so a model that cannot answer here
+#: cannot answer in a detector either.
+PROBE_MAX_TOKENS = 1200
 PROBE_TIMEOUT_S = 45.0
 
 #: Total attempts per model on a retryable answer (5xx, 429, transport). One more than
@@ -55,6 +63,9 @@ class Probe:
     role: str  # "primary" or "fallback"
     provider: str
     model: str
+    max_tokens: int = PROBE_MAX_TOKENS
+    """What to ask this model for. Below the default only where the route caps it, so the probe
+    sends what the router would send rather than a number the model rejects."""
 
 
 @dataclass
@@ -70,10 +81,11 @@ def probes_from(settings: TalosSettings, primary_only: bool) -> list[Probe]:
     found: list[Probe] = []
     seen: set[tuple[str, str]] = set()
     for agent, route in sorted(settings.routing.items()):
-        candidates = [Probe(agent, "primary", route.provider, route.model)]
+        budget = min(PROBE_MAX_TOKENS, route.max_tokens_ceiling or PROBE_MAX_TOKENS)
+        candidates = [Probe(agent, "primary", route.provider, route.model, budget)]
         if route.fallback is not None and not primary_only:
             candidates.append(
-                Probe(agent, "fallback", route.fallback.provider, route.fallback.model)
+                Probe(agent, "fallback", route.fallback.provider, route.fallback.model, budget)
             )
         for probe in candidates:
             key = (probe.provider, probe.model)
@@ -111,7 +123,7 @@ def probe_model(settings: TalosSettings, probe: Probe, key: str) -> Result:
                 json={
                     "model": probe.model,
                     "messages": PROBE_MESSAGES,
-                    "max_tokens": PROBE_MAX_TOKENS,
+                    "max_tokens": probe.max_tokens,
                     "temperature": 0,
                 },
                 timeout=PROBE_TIMEOUT_S,
@@ -121,7 +133,13 @@ def probe_model(settings: TalosSettings, probe: Probe, key: str) -> Result:
             continue
 
         if response.status_code == 200:
-            note = _first_words(response.json())
+            try:
+                note = _first_words(response.json())
+            except ModelError as exc:
+                # 200 with no usable text is a failure, not a pass: it is exactly what a
+                # detector would get, and it is how two unusable models were reported "ok".
+                detail = f"200 but no usable reply: {exc}"
+                break
             if attempt:
                 note = f"{note} (after {attempt + 1} attempts)"
             return Result(probe, True, note, _ms(started))
@@ -138,13 +156,15 @@ def _ms(started: float) -> int:
 
 
 def _first_words(payload: dict[str, Any], limit: int = 40) -> str:
-    """The model's own reply, trimmed -- proof it generated rather than merely accepted."""
-    try:
-        content = payload["choices"][0]["message"]["content"] or ""
-    except (KeyError, IndexError, TypeError):
-        return "200 but no message content"
-    flattened = " ".join(str(content).split())
-    return flattened[:limit] or "200, empty reply"
+    """The model's own reply, trimmed -- proof it generated rather than merely accepted.
+
+    Reads it through the client's own :func:`extract_reply` so the probe looks in exactly the
+    fields the pipeline looks in. Reading ``content`` alone made every reasoning model -- which
+    answers in ``reasoning`` or ``reasoning_content`` -- look empty. Raises ``ModelError`` when
+    there is no text anywhere, which the caller turns into a FAIL.
+    """
+    flattened = " ".join(extract_reply(payload).split())
+    return flattened[:limit]
 
 
 def _error_text(response: httpx.Response, limit: int = 120) -> str:

@@ -57,9 +57,8 @@ class ModelRouter:
             _log.debug("no route configured", extra={"component": component})
             return None
 
-        primary = await self._try(
-            route.provider, route.model, prompt, schema, max_tokens, component
-        )
+        budget = self._budget(route, max_tokens)
+        primary = await self._try(route.provider, route.model, prompt, schema, budget, component)
         if primary is not None:
             return ModelOutcome(
                 data=primary,
@@ -72,7 +71,7 @@ class ModelRouter:
 
         penalty = self._settings.llm.fallback_confidence_penalty
         fallback = await self._try(
-            route.fallback.provider, route.fallback.model, prompt, schema, max_tokens, component
+            route.fallback.provider, route.fallback.model, prompt, schema, budget, component
         )
         if fallback is None:
             _log.warning(
@@ -90,6 +89,21 @@ class ModelRouter:
             ),
             confidence_multiplier=penalty,
         )
+
+    def _budget(self, route: ModelRoute, max_tokens: int) -> int:
+        """The caller's answer budget plus the thinking headroom, under the route's ceiling.
+
+        A caller asks for what its *answer* needs. A reasoning model spends that budget thinking
+        and gets cut off before the JSON starts -- measured, ``nemotron-3.5-lightning`` truncates
+        at 300 and answers cleanly at 1200. Paying for the thinking here rather than at each call
+        site is what keeps a detector from having to know whether its model reasons out loud, and
+        ``max_tokens`` is a ceiling rather than a spend, so a model that does not think is
+        unaffected. The clamp is for the small models that reject the larger number outright.
+        """
+        budget = max_tokens + self._settings.llm.reasoning_token_headroom
+        if route.max_tokens_ceiling is not None:
+            budget = min(budget, route.max_tokens_ceiling)
+        return budget
 
     async def _try(
         self,

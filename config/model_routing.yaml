@@ -101,3 +101,7 @@ talos:
       provider: groq
       model: "meta-llama/llama-prompt-guard-2-86m"
       fallback: { provider: nim, model: "nvidia/llama-3.1-nemotron-safety-guard-8b-v3" }
+      # An 86M classifier, not a generative model: Groq rejects any max_tokens above 512 with a
+      # 400. Every other route can absorb llm.reasoning_token_headroom on top of what its caller
+      # asks for; this one is clamped to what the model will accept.
+      max_tokens_ceiling: 512
