@@ -12,10 +12,10 @@ from typing import Any
 
 import pytest
 
-from talos.core.settings import TalosSettings
+from talos.core.settings import TalosSettings, repository_root
 from talos.ingestion.parsers.network_log_parser import NetworkLogParser
 from talos.ingestion.parsers.web_log_parser import WebLogParser
-from talos.output.demo_trace_engine import build_trace
+from talos.output.demo_trace_engine import DEMO_CHAINS, build_trace
 
 SUBMISSION = Path(__file__).resolve().parents[3] / "docs" / "submission"
 CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
@@ -81,3 +81,24 @@ def test_the_trace_serialises_for_the_ui(settings: TalosSettings) -> None:
     assert payload["title"] == "demo_web_chain.log"
     assert payload["incidents"] >= 2
     assert isinstance(payload["steps"], list)
+
+
+def test_the_demo_chains_are_committed_not_just_present() -> None:
+    """A chain that exists only on the author's disk is a demo that crashes on a fresh clone.
+
+    `.gitignore` carries a blanket `*.log` for runtime artifacts, with carve-outs for the corpora
+    that are source rather than output. `docs/submission/` was not among them, so both prepared
+    chains were untracked: every check passed locally and `talos demo` died on a missing file for
+    anyone who cloned the repository. Caught by running the README quickstart in a clean clone,
+    which is what this test makes cheap to repeat.
+    """
+    import subprocess
+
+    for chain in DEMO_CHAINS:
+        relative = chain.path().relative_to(repository_root())
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", str(relative).replace("\\", "/")],
+            cwd=repository_root(),
+            capture_output=True,
+        )
+        assert tracked.returncode == 0, f"{relative} is not tracked by git"

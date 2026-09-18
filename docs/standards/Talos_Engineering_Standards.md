@@ -65,9 +65,16 @@ data/       sample and reference data (committed, small, non-secret)
 deploy/      containerization and deployment manifests
 scripts/     operator-facing runnable scripts
 tools/       repo tooling (the R1–R6 checkers live here)
+ui/          the browser face: a built front end, never Python
 .github/     CI workflows
 .claude/     agent settings for this workspace
 ```
+
+`ui/` is the one tree not governed by §3's role-suffix vocabulary, which is written for Python
+modules. Everything else applies to it unchanged: §1.2's forbidden stems (`app`, `utils`,
+`main` as a *root* file), §3.8's filename hygiene, and §6's line ceilings, which the size
+checker enforces on `.ts` and `.tsx` as it does on `.py`. Its `node_modules/` and `dist/` are
+build output and are git-ignored; they are never committed and the checkers skip them.
 
 ### 1.2 Explicitly forbidden at root
 
@@ -238,6 +245,13 @@ Talos/
 │       ├── check_file_size.py        enforces R6
 │       ├── check_feature_docs.py     enforces R5
 │       └── run_all_checks.py         single entry point for make / pre-commit / CI
+│
+├── ui/                               the trace visualiser: the browser face of the demo
+│   ├── package.json                  front-end manifest and scripts (npm run build)
+│   ├── vite.config.ts                build config; base /ui/, dev proxy to talos serve
+│   ├── tsconfig.json                 TypeScript config, strict
+│   ├── index.html                    the page shell
+│   └── src/                          the page itself; no detection logic ever lives here
 │
 ├── .github/
 │   └── workflows/                    CI: runs the checkers, lint, types, tests

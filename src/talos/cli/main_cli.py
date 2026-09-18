@@ -180,38 +180,37 @@ def _run_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-#: The prepared chains behind a bare ``talos demo`` (HLD P9). Each is a committed log that tells one
-#: story: a multi-stage web attack, and a network brute force that lands.
-_DEMO_CHAINS: tuple[tuple[str, str, str], ...] = (
-    ("Web - SQL injection, then a login brute force", "demo_web_chain.log", "web"),
-    ("Network - SSH brute force with a trailing success", "demo_network_chain.log", "network"),
-)
-
-
 def _run_demo(args: argparse.Namespace) -> int:
     """Run the prepared chains through the real pipeline and print the reasoning, not just the
     verdict. The trace is what makes Talos more than a WAF regex (HLD P9), so it is the whole
     output: every event, what it was routed to, the evidence, and the incident it aggregated into.
+
+    The chains and the run itself live in ``demo_trace_engine``, not here: the browser's trace
+    visualiser serves the same structure, and a second copy of the wiring is a second pipeline
+    to keep in step.
     """
-    from talos.output.demo_trace_engine import build_trace
+    from talos.output.demo_trace_engine import DEFAULT_SYSLOG_YEAR, DEMO_CHAINS, trace_for
 
     settings = TalosSettings.load(config_dir=args.config_dir)
     configure_logging(args.log_level or "WARNING")  # the trace is the output; keep logs out of it
-    submission = Path(__file__).resolve().parents[3] / "docs" / "submission"
 
-    chains = _DEMO_CHAINS
+    chains = DEMO_CHAINS
     if args.chain != "all":
-        chains = tuple(c for c in _DEMO_CHAINS if c[2] == args.chain)
+        chains = tuple(c for c in DEMO_CHAINS if c.domain == args.chain)
 
-    for title, filename, domain in chains:
-        path = args.file or (submission / filename)
-        lines = path.read_text(encoding="utf-8").splitlines()
-        parser: BaseParser = (
-            WebLogParser() if domain == "web" else NetworkLogParser(default_year=args.year or 2026)
+    for chain in chains:
+        lines = (
+            args.file.read_text(encoding="utf-8").splitlines()
+            if args.file is not None
+            else chain.lines()
         )
-        # The prepared chains are injection and brute force; neither reads a baseline, so the
-        # cold-start store is right. An IDOR chain would need an in-memory learning store.
-        trace = build_trace(title, lines, parser, settings, baseline_store=_NoBaseline())
+        trace = trace_for(
+            chain.domain,
+            lines,
+            settings,
+            title=chain.title,
+            year=args.year or DEFAULT_SYSLOG_YEAR,
+        )
         if args.json:
             print(json.dumps(trace.to_dict(), indent=2, default=str))
         else:

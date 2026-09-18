@@ -19,11 +19,14 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from talos.core.error_types import StorageError
-from talos.core.settings import TalosSettings
+from talos.core.settings import TalosSettings, repository_root
 from talos.output.api.report_routes import TalosState, router
+from talos.output.api.trace_routes import router as trace_router
 from talos.storage.postgres_connection_pool import PostgresConnectionPool
 from talos.storage.verdict_log_store import VerdictLogStore
 
@@ -91,7 +94,38 @@ def create_app(
         openapi_url="/openapi.json",
     )
     app.include_router(router)
+    app.include_router(trace_router)
+    _mount_visualiser(app)
     return app
+
+
+def _mount_visualiser(app: FastAPI) -> None:
+    """Serve the built trace visualiser at ``/ui``, when it has been built.
+
+    The page is a separate build (``ui/``, ``npm run build``) rather than a template rendered
+    here, and its absence is not an error: the API is the product, the page is a face on it, and
+    a fresh clone that has never run ``npm`` must still be able to ``talos serve``. When the
+    build is missing the route says how to produce it instead of 404-ing into silence.
+    """
+    dist = repository_root() / "ui" / "dist"
+    if (dist / "index.html").is_file():
+        # html=True so a refresh on any path inside the page serves index.html rather than 404.
+        app.mount("/ui", StaticFiles(directory=dist, html=True), name="ui")
+        _log.info("trace visualiser mounted", extra={"path": "/ui"})
+        return
+
+    @app.get("/ui", include_in_schema=False)
+    async def visualiser_not_built() -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "detail": "the trace visualiser has not been built",
+                "build_it": "cd ui && npm install && npm run build",
+                "meanwhile": "the trace itself is at POST /trace, and talos demo prints it",
+            },
+        )
+
+    _log.info("trace visualiser not built, /ui explains how", extra={"expected": str(dist)})
 
 
 async def _prune(store: VerdictLogStore, settings: TalosSettings) -> None:

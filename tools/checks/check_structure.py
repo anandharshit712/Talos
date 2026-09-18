@@ -57,6 +57,10 @@ ROOT_DIR_ALLOWLIST = frozenset(
         "deploy",
         "scripts",
         "tools",
+        # The trace visualiser's front end. It is a root directory rather than a subtree of
+        # src/ because src/ is the Python package -- R2 requires every directory under it to be
+        # an importable package, which a node project is not.
+        "ui",
         ".github",
         ".claude",
     }

@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+/* The page reads as an analyst's console, not a marketing site: near-black ground, one signal
+   colour, and severity carried by hue rather than by decoration. Evidence and log lines are
+   monospaced because they are quoted material -- an analyst has to be able to trust that what is
+   on screen is what was in the log, character for character. */
+@theme {
+  --color-ground: #0a0b0d;
+  --color-panel: #131519;
+  --color-edge: #23262d;
+  --color-quiet: #8a919e;
+  --color-signal: #4da3ff;
+
+  --color-sev-critical: #ff4d5e;
+  --color-sev-high: #ff8a3d;
+  --color-sev-medium: #ffc53d;
+  --color-sev-low: #4da3ff;
+
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas,
+    monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-ground);
+  color: #e6e8ec;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A trace is long and vertical; the default scrollbar on a dark ground is a bright stripe. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ground);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-edge);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #333842;
+}

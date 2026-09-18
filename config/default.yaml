@@ -72,6 +72,12 @@ talos:
   output:
     sinks: [stdout, json_file]
     report_dir: out/reports
+    api:
+      # POST /trace runs whatever text it is given through the parsers and detectors, so the
+      # work one request can ask for is bounded here rather than by the process's memory.
+      # Generous for any demo log; small enough that the run stays interactive.
+      max_trace_log_chars: 200000
+      max_trace_log_lines: 2000
 
   # Per-detector calibration curve parameters (LLD 9). Left empty on purpose after the P8
   # measurement, not for want of numbers: the statistical detectors are 0-false-positive and

@@ -296,6 +296,13 @@ class ApiSettings(_Block):
     recent_limit_max: int = Field(default=200, gt=0)
     """Ceiling on ``GET /reports?limit=`` so one request cannot ask for the whole table."""
 
+    max_trace_log_chars: int = Field(default=200_000, gt=0)
+    max_trace_log_lines: int = Field(default=2_000, gt=0)
+    """Ceilings on a log submitted to ``POST /trace``. The trace visualiser accepts raw text
+    from whoever can reach the port and runs every line through the pipeline, so the size of
+    what one request can ask the process to do has to be bounded somewhere that is not the
+    process's memory. Generous enough for any demo log, small enough that the run is quick."""
+
 
 class OutputSettings(_Block):
     sinks: list[str] = Field(default_factory=lambda: ["stdout", "json_file"])

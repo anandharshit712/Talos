@@ -252,7 +252,14 @@ def test_the_openapi_document_renders_and_names_every_route(client_for: Any) -> 
     with client_for(StubOrchestrator(), StubStore()) as client:
         document = client.get("/openapi.json").json()
 
-    assert set(document["paths"]) == {"/events", "/reports", "/reports/{incident_id}", "/healthz"}
+    assert set(document["paths"]) == {
+        "/events",
+        "/reports",
+        "/reports/{incident_id}",
+        "/healthz",
+        "/trace",
+        "/trace/chains",
+    }
     assert document["info"]["title"] == "Talos"
 
 

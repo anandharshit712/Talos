@@ -975,5 +975,34 @@ Calibration remains unmeasurable: the corpus still produces zero wrong verdicts,
 confidence band reads 1.00 whatever it claimed. The gate records this and skips rather than
 reporting a calibration it did not measure. Closing it needs hard negatives — a P8.2 corpus item.
 
+### 16.16 Revision 1.16 — the model path repaired, and the trace visualiser, P9 (2026-09-18)
+
+Two halves. The first is a defect record: from P3 until now, **every routed LLM call in this
+repository fell through to the templated narrative**, and nothing failed loudly enough to say so.
+Detection was unaffected — it is statistical by design, and `used_llm=false` is a supported mode
+— which is exactly why it went unnoticed for five phases.
+
+| Change | Where | Why |
+|---|---|---|
+| **`extract_reply` reads `reasoning` as well as `reasoning_content`** | §8.1 | Providers disagree on the field name for the same weights: NIM returns `reasoning_content`, Groq returns `reasoning` for `openai/gpt-oss-*`. Reading one spelling raised "completion carried no text" against a model that had answered perfectly, so every gpt-oss route silently took its fallback, and when the fallback was the other reasoning model, the templated path. |
+| **`llm.reasoning_token_headroom` (1200), added by the router** | §8.2 | A caller budgets the tokens its *answer* needs (220 for a narrative). A reasoning model spends that budget thinking and is cut off before the JSON begins — measured on `nemotron-3.5-lightning`: truncates mid-thought at 300, clean JSON at 1200. The router adds the headroom so no detector has to know whether the model it was routed to reasons out loud. `max_tokens` is a ceiling, not a spend, so a model that does not think pays nothing for it. |
+| **`ModelRoute.max_tokens_ceiling`, set on `payload_guard`** | §8.2 | The headroom then broke the one route whose model is an 86M classifier: `llama-prompt-guard-2-86m` rejects `max_tokens` above 512 outright. The ceiling is per route because it is a property of the model, not of the caller. |
+| **`check_model_availability.py` stopped passing unusable models** | §8.4 | It asked for 8 tokens and read only `content`, so both reasoning models reported "ok, empty reply" — a pass for a model the pipeline could not use. It now buys the same headroom, honours a route's ceiling, and reads through `extract_reply`, so it looks where the pipeline looks. A 200 with no usable text is a FAIL. |
+| **The CLI forces UTF-8 on stdout/stderr** | §10 | Only a live model surfaced it: the narrative contained U+2011 and writing it to the Windows console's cp1252 stream raised *at output time*, killing the run with exit 1 after detection had finished. The same crash is reachable with no model at all, because a UTF-8 payload in a request path is copied verbatim into the evidence — attacker-triggerable, and fail-safe-for-reporting does not survive a report that cannot be printed. |
+
+Measured on the SSH fixture with keys live: 7m+ and `used_llm=false` on every verdict, to 8.3s and
+`used_llm=true` from the primary model with 0 call failures.
+
+The second half is P9's browser face.
+
+| Change | Where | Why |
+|---|---|---|
+| **`GET /trace/chains`, `POST /trace`** | §2.1 | The prepared chains with their logs, and any submitted log run through the real pipeline, returned as `Trace.to_dict()`. The routes hold no detection logic; they call the same `trace_for` that `talos demo` calls. |
+| **`DEMO_CHAINS` / `trace_for` moved from `main_cli` to `demo_trace_engine`** | §4 | The CLI owned the chain table, the parser choice and the cold-baseline stand-in. The API would have had to copy all three, which is two pipelines to keep in step. Now both faces call one function, so a difference between terminal and browser could only be a rendering difference. |
+| **`output.api.max_trace_log_chars` / `max_trace_log_lines`** | §2.1 | `POST /trace` runs whatever text it is given through parsers and detectors. Handling is unchanged — log content was already data rather than instruction (§11) — so the new exposure is volume, and it is bounded in config rather than by the process's memory. |
+| **The trace runs on a worker thread** | §2.1 | `build_trace` owns its event loop (`asyncio.run`), so calling it inside a route would raise, and running it inline would block every other request for the length of the scan. |
+| **`ui/`, a new root directory** | §2.1 tree, standards §1.1 | A Vite/React/Tailwind page, built to `ui/dist/` and mounted at `/ui`. It is a root directory rather than a subtree of `src/`, because R2 requires every directory under `src/` to be an importable Python package. Its absence is not an error: `ui/dist/` is git-ignored, and an unbuilt `/ui` answers 503 with the command that builds it rather than 404-ing into what looks like a broken deployment. |
+
+
 ---
 *End of LLD.*

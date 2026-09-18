@@ -27,17 +27,37 @@ Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
 ## Where the build stands
 
-**P0–P8 are done and pushed. P9 (demo & submission) is next.**
+**P0–P9 are done and pushed. The build is feature-complete; what remains is submission polish.**
 Storage is on PostgreSQL, the FastAPI surface is up (`talos serve`, `talos replay`), both domains'
-detectors are built and **measured on real captured corpora** (`scripts/capture_web_attack_corpus.py`):
+detectors are **measured on real captured corpora** (`scripts/capture_web_attack_corpus.py`):
 SQLi 1.00/0.89, XSS 1.00/0.98, the four windowed detectors 1.00/1.00, 0 false positives over 459
 events. Results in `docs/operations/Talos_Evaluation_Results.md`; all feature statuses `stable`.
-Calibration was **measured and resolved**: `config/default.yaml → calibration:` stays empty on
-purpose — the static path is 0-FP and conservative in-distribution, so a curve would have nothing to
-correct; the one overconfident regime (attack vocabulary in free-text fields) is documented and pinned
-by a test. Deferred with triggers: SSH/RDP real capture, hard-negative outcome-calibration. **P9 is
-the demo: one web chain, one network chain, raw log → pipeline trace → scoped `IncidentReport`, and
-the `LICENSE` open item.**
+P9 shipped both faces of the demo: `talos demo` prints the annotated pipeline trace, and `ui/`
+(React + Tailwind, built with `npm run build`, served at `/ui`) renders the same `Trace` with an
+editable log. They call one function (`demo_trace_engine.trace_for`), and a test compares both
+paths — do not let a second copy of that wiring appear.
+
+**Three defects P9 exposed, all of which passed every local check:**
+
+- **Every routed LLM call had been falling through to the templated path since P3.** Groq returns a
+  reasoning model's text in `reasoning`, NIM in `reasoning_content`, and `extract_reply` read only
+  the latter; separately, a reasoning model spent its entire answer budget thinking before the JSON
+  began. Fixed with `llm.reasoning_token_headroom` applied in the router (and
+  `ModelRoute.max_tokens_ceiling` for the 86M guard model, which rejects a large `max_tokens`).
+  7m+/`used_llm=false` → 8.3s/`used_llm=true`. **`scripts/check_model_availability.py` had been
+  reporting those models "ok" — re-run it after any routing change; it now fails a 200 with no
+  usable text.**
+- **Both demo chains were untracked**, swallowed by `.gitignore`'s blanket `*.log`, so `talos demo`
+  crashed on any fresh clone while every local check passed. Carve-out added, plus a test asserting
+  they are tracked. **The clean-clone quickstart is the only thing that catches this class — run it.**
+- **A UTF-8 narrative killed the run at print time** on a cp1252 console, after detection had
+  finished. Reachable with no model at all, because a UTF-8 payload in a request path is copied
+  into the evidence. The CLI now forces UTF-8 on stdout/stderr.
+
+**The one open item is `LICENSE`** — deferred by the owner twice (2026-09-07, 2026-09-18). Every
+doc calls Talos open-source and `pyproject.toml` carries the TODO, so the repository claims a
+license it does not grant. Do not choose one on the owner's behalf; raise it, do not resolve it.
+Deferred with triggers: SSH/RDP real capture, hard-negative outcome-calibration.
 [docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) is the live record —
 every phase, section, file, test, and gate. **Tick its boxes in the same commit as the work.**
 

@@ -28,9 +28,12 @@ config/local.yaml
 
 # Runtime artifacts
 *.log
-# ...but labelled test corpora are source, not runtime output (standards 3.6).
+# ...but labelled test corpora are source, not runtime output (standards 3.6). So are the demo
+# chains: `talos demo` reads them, so a clone without them is a clone where the P9 demo -- the
+# whole submission -- crashes on a missing file. Found by running the quickstart in a fresh clone.
 !tests/fixtures/logs/*.log
 !data/samples/*.log
+!docs/submission/*.log
 *.db
 *.sqlite
 *.sqlite3
@@ -41,3 +44,6 @@ reports/
 .idea/
 .DS_Store
 Thumbs.db
+ui/node_modules/
+ui/dist/
+ui/*.tsbuildinfo

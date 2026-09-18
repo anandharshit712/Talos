@@ -16,10 +16,11 @@ being reachable, and detection is statistical anyway (the model only words the n
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 from talos.core.agent_contracts import DetectionContext, DomainAgent
-from talos.core.settings import TalosSettings
+from talos.core.settings import TalosSettings, repository_root
 from talos.ingestion.parser_contract import BaseParser
 from talos.orchestrator.agent_registry import AgentRegistry
 from talos.orchestrator.event_orchestrator import EventOrchestrator
@@ -28,6 +29,10 @@ from talos.schemas.event_schema import NormalizedEvent
 from talos.schemas.report_schema import IncidentReport
 from talos.schemas.verdict_schema import Verdict
 from talos.storage.event_window_store import EventWindowStore
+
+#: Syslog stamps carry no year, so one has to be supplied. The prepared network chain is written
+#: in 2026; a caller reading a live log passes its own.
+DEFAULT_SYSLOG_YEAR = 2026
 
 
 @dataclass
@@ -214,6 +219,86 @@ def build_trace(
 
     asyncio.run(run())
     return trace
+
+
+@dataclass(frozen=True)
+class DemoChain:
+    """One prepared attack story: a committed log, and how to read it."""
+
+    domain: str
+    title: str
+    filename: str
+
+    def path(self) -> Path:
+        """The committed log, which is also a submission artifact (``docs/submission/``)."""
+        return repository_root() / "docs" / "submission" / self.filename
+
+    def lines(self) -> list[str]:
+        return self.path().read_text(encoding="utf-8").splitlines()
+
+
+#: The chains behind a bare ``talos demo`` and the browser's chain picker (HLD P9). Each is a
+#: committed log telling one story: a multi-stage web attack, and a network brute force that lands.
+DEMO_CHAINS: tuple[DemoChain, ...] = (
+    DemoChain("web", "Web - SQL injection, then a login brute force", "demo_web_chain.log"),
+    DemoChain(
+        "network", "Network - SSH brute force with a trailing success", "demo_network_chain.log"
+    ),
+)
+
+
+def chain_for(domain: str) -> DemoChain | None:
+    """The prepared chain for a domain, or ``None`` when there is not one."""
+    return next((chain for chain in DEMO_CHAINS if chain.domain == domain), None)
+
+
+def parser_for(domain: str, *, year: int = DEFAULT_SYSLOG_YEAR) -> BaseParser:
+    """The parser a domain's telemetry is read with.
+
+    ``year`` exists because syslog stamps carry no year; it is ignored for web access logs,
+    whose timestamps are complete.
+    """
+    from talos.ingestion.parsers.network_log_parser import NetworkLogParser
+    from talos.ingestion.parsers.web_log_parser import WebLogParser
+
+    if domain == "web":
+        return WebLogParser()
+    return NetworkLogParser(default_year=year)
+
+
+def trace_for(
+    domain: str,
+    lines: list[str],
+    settings: TalosSettings,
+    *,
+    title: str,
+    year: int = DEFAULT_SYSLOG_YEAR,
+) -> Trace:
+    """Run raw log lines for one domain through the pipeline and return the trace.
+
+    The one entry point both faces of the demo call. ``talos demo`` renders what comes back to a
+    terminal and the trace visualiser serves it to a browser, so a difference between the two
+    would have to be a rendering difference -- neither can reach a different pipeline.
+    """
+    return build_trace(
+        title, lines, parser_for(domain, year=year), settings, baseline_store=_ColdBaseline()
+    )
+
+
+class _ColdBaseline:
+    """Every account cold, nothing learned.
+
+    Satisfies ``BaselineReader`` and deliberately lacks ``record_access``, so the baseliner
+    declines to learn rather than racing a store that cannot lock. The prepared chains are
+    injection and brute force, neither of which reads a baseline; an IDOR chain would need an
+    in-memory learning store instead.
+    """
+
+    async def get(self, account: str) -> Any | None:
+        return None
+
+    async def put(self, baseline: Any) -> None:
+        return None
 
 
 def _domain_agents() -> list[DomainAgent]:
