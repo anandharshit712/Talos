@@ -27,7 +27,7 @@ Phase gates add `--strict` (requires a mirrored test for every module, R3.5).
 
 ## Where the build stands
 
-**P0–P9 are done and pushed. The build is feature-complete; what remains is submission polish.**
+**P0–P9 are done and pushed. The build is feature-complete; what remains is release polish.**
 Storage is on PostgreSQL, the FastAPI surface is up (`talos serve`, `talos replay`), both domains'
 detectors are **measured on real captured corpora** (`scripts/capture_web_attack_corpus.py`):
 SQLi 1.00/0.89, XSS 1.00/0.98, the four windowed detectors 1.00/1.00, 0 false positives over 459

@@ -29,9 +29,10 @@ Status legend: `[x]` done · `[~]` in progress · `[ ]` not started · `[-]` cut
 | **P6** Broken access control | D12–D14 | — | **done** | yes | yes |
 | **P7** Output surface | D15 | — | **done** | yes | yes |
 | **P8** Evaluation & calibration | D16–D17 | — | **done** | yes | yes |
-| **P9** Demo & submission | D18 | — | **done** | yes | yes |
+| **P9** Demo & release | D18 | — | **done** | yes | yes |
 
-**Submission: 2026-10-09** (moved from 2026-09-04 by the owner on 2026-09-04). P0–P5 all landed by
+**No external deadline** (dropped 2026-10-11). Talos continues as a standalone open-source project.
+History: the target date moved from 2026-09-04 to 2026-10-09 on 2026-09-04. P0–P5 all landed by
 Aug 19, so the original calendar is spent; the remaining phases carry day counts, not dates, and are
 gated by §0.1's definition of done rather than by a date. **The §8.1 cut order is off the table** —
 six planned days of work against five weeks means P6 (IDOR **and** the PostgreSQL port) is built in
@@ -911,14 +912,14 @@ the gate below is not met by them.
 
 ---
 
-## P9 — Demo & Submission · D18 — **done**
+## P9 — Demo & Release · D18 — **done**
 
 - [x] **Demo script done.** `talos demo` runs both prepared chains through the real pipeline and
       prints the annotated trace — every event, its routing, the evidence, the confidence, and the
       scoped incident. Web chain: four SQLi payloads (one per pattern class) then a login brute force
       that lands (three incidents, two detectors). Network chain: an SSH brute force escalating from
       medium to high on the trailing success. Model off; `--json` emits the structure the UI consumes.
-      `src/talos/output/demo_trace_engine.py` + the CLI subcommand + `docs/submission/demo_*_chain.log`,
+      `src/talos/output/demo_trace_engine.py` + the CLI subcommand + `data/samples/demo_*_chain.log`,
       pinned by `tests/unit/output/test_demo_trace_engine.py`. Feature folder `pipeline-trace-demo/`.
 - [x] **The pipeline trace is the differentiator** — the demo's whole output is the reasoning, not
       the verdict. Both faces (terminal, UI) read one `Trace` structure so they cannot drift.
@@ -932,8 +933,8 @@ the gate below is not met by them.
 - [x] **One computation, two faces — enforced, not asserted.** `DEMO_CHAINS` and `trace_for` moved
       out of `main_cli` into `demo_trace_engine`; the terminal and the browser call one function,
       and a test runs the web chain both ways and compares the traces.
-- [x] `docs/submission/` deliverables finalised — `Talos_Submission_Overview.md` written (the
-      judge-facing entry point: 60-second demo, measured numbers, stated limits).
+- [x] `docs/overview/` docs finalised — `Talos_Project_Overview.md` written (the
+      reader-facing entry point: 60-second demo, measured numbers, stated limits).
 - [x] **The demo chains are actually committed now.** They were not: `.gitignore`'s blanket `*.log`
       swallowed both, so `talos demo` died on a missing file for anyone who cloned the repository
       while every local check passed. Found by running the quickstart in a clean clone — the one
@@ -951,7 +952,7 @@ the gate below is not met by them.
 
 ## Cut order (plan §8.1) — **dormant since 2026-09-04**, drop in this sequence if it revives
 
-The submission moved to 2026-10-09 and nothing below is being cut. The list stands as the agreed
+The target date moved to 2026-10-09 and was dropped entirely on 2026-10-11; with no target date, nothing below is being cut. The list stands as the agreed
 sequence should a phase overrun badly enough to need it again.
 
 
@@ -997,7 +998,8 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
-| 1.17 | 2026-09-18 | **P9 done and pushed — the build is feature-complete.** The trace visualiser (`ui/`, React + Tailwind, served at `/ui`) and the two routes behind it; the chain wiring moved into `demo_trace_engine` so the terminal and the browser provably run one computation. `Talos_Submission_Overview.md` written. Two defects the phase exposed, neither of which any local check could see: **every routed LLM call had been falling through to the templated path since P3** (Groq spells the reasoning field `reasoning`, NIM spells it `reasoning_content`; and a reasoning model spent its whole answer budget thinking) — 7m+/`used_llm=false` became 8.3s/`used_llm=true`; and **both demo chains were untracked**, swallowed by `.gitignore`'s `*.log`, so the demo crashed on any fresh clone. Found by the clean-clone quickstart. A UTF-8 output crash fell out of the first fix: a model narrative containing U+2011 killed the run at print time on a cp1252 console, reachable with no model at all via a UTF-8 payload in a request path. LICENSE remains open by the owner's decision. |
+| 1.18 | 2026-10-11 | External deadline dropped; Talos continues as a standalone open-source project. Every reference to the event and its deadline removed from docs and code; `docs/submission/` split — the demo chains moved to `data/samples/` (already carved out of `*.log`), the two documents to `docs/overview/` (`Talos_Submission_Overview.md` renamed `Talos_Project_Overview.md`). |
+| 1.17 | 2026-09-18 | **P9 done and pushed — the build is feature-complete.** The trace visualiser (`ui/`, React + Tailwind, served at `/ui`) and the two routes behind it; the chain wiring moved into `demo_trace_engine` so the terminal and the browser provably run one computation. The project overview written (now `docs/overview/Talos_Project_Overview.md`). Two defects the phase exposed, neither of which any local check could see: **every routed LLM call had been falling through to the templated path since P3** (Groq spells the reasoning field `reasoning`, NIM spells it `reasoning_content`; and a reasoning model spent its whole answer budget thinking) — 7m+/`used_llm=false` became 8.3s/`used_llm=true`; and **both demo chains were untracked**, swallowed by `.gitignore`'s `*.log`, so the demo crashed on any fresh clone. Found by the clean-clone quickstart. A UTF-8 output crash fell out of the first fix: a model narrative containing U+2011 killed the run at print time on a cp1252 console, reachable with no model at all via a UTF-8 payload in a request path. LICENSE remains open by the owner's decision. |
 | 1.16 | 2026-09-07 | **P8 done and pushed.** Web windowed detectors captured through nginx too (brute force, stuffing, IDOR + benign counterparts); all detectors measured on real corpora — SQLi 1.00/0.89, XSS 1.00/0.98, the four windowed 1.00/1.00, 0 FP over 459 events. Calibration measured and resolved honestly: unmeasurable in-distribution (0 wrong verdicts), `calibration:` left empty on purpose, the one overconfident regime (attack vocabulary in prose) found by an adversarial probe and pinned by a test. One lossless precision win fell out — `union_select` requires a column list now. `Talos_Evaluation_Results.md` written; all feature statuses `stable`. SSH/RDP capture and hard-negative calibration deferred with triggers. |
 | 1.15 | 2026-09-07 | **P8.2 payload corpus done, and a real recall gap closed.** Real SQLi/XSS payloads captured through nginx (stdlib driver — Defender quarantines sqlmap/nikto) dropped static SQLi recall to 0.65, hidden by the synthetic fixture that scored its own author 1.00. Two precise rule additions (parenthesised tautology, new `error_based` class) → 0.89, precision held. LLD bumped to 1.15 (§16.15); SQLi feature docs updated. 400 lines of real scanner traffic measured (0 FP), not committed — XFF carries real client IPs. Windowed corpus still synthetic; calibration still blocked on hard negatives. |
 | 1.14 | 2026-09-07 | **P8.1 recorded as done.** The metrics harness, its gate, and the baseline run — 0 false positives, 1.00 across the board, on a corpus too small for any of it to be quotable. Two findings carried forward: calibration cannot be measured without hard negatives, and the availability prober was failing healthy models on a single 503 (7/7 live once fixed, routing unchanged). CLAUDE.md's status line, four phases stale, corrected — and the pre-push doc rule added that should have caught it. |
@@ -1006,7 +1008,7 @@ sequence should a phase overrun badly enough to need it again.
 | 1.11 | 2026-09-04 | Storage gate passed against live PostgreSQL 17.2: 672 tests, 0 skipped, concurrent writers clean, `talos scan` writing real incidents. Two defects the live run exposed — migrations ordered by filename rather than stamp, and a pool shared across event loops. |
 | 1.10 | 2026-09-04 | P6.1 recorded as done: the access baseline, its bounded update rule, and the store with per-account advisory locking. The redundant index on `account` cut. |
 | 1.9 | 2026-09-04 | P6.0 recorded as done: the audit trail on PostgreSQL, the shared pool, the per-engine migration sets, and the four things the port exposed. Three storage open items closed. |
-| 1.8 | 2026-09-04 | Submission moved to 2026-10-09. Remaining phases carry day counts, not calendar dates; the §8.1 cut order goes dormant and P6 is built in full, PostgreSQL port included. |
+| 1.8 | 2026-09-04 | Target date moved to 2026-10-09. Remaining phases carry day counts, not calendar dates; the §8.1 cut order goes dormant and P6 is built in full, PostgreSQL port included. |
 | 1.7 | 2026-08-19 | P5 recorded as done: two web auth detectors, RDP, the shared verdict engine, and the five things building it exposed — including a web parser that had never populated `auth`. Rotated stuffing added to deferred items. |
 | 1.6 | 2026-08-18 | The LLM off switch, the documented `.env.example`, and the defect that review exposed: provider keys on disk were never loaded. |
 | 1.5 | 2026-08-18 | P4 recorded as done with measured precision/recall, the four defects found while building, and the honest reading of a 28-line corpus. |

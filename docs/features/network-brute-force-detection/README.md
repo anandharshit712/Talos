@@ -23,6 +23,6 @@ a degraded one.
 | [testing.md](testing.md) | cases covered, fixtures, results |
 | [changelog.md](changelog.md) | dated entries |
 
-**Scope for the hackathon slice:** SSH (P2) and RDP (P5), both delivered. Port scanning and
+**Prototype scope:** SSH (P2) and RDP (P5), both delivered. Port scanning and
 DDoS remain reserved: the network classifier returns `unclassified` for flow-only telemetry, so
 adding them is a classifier route plus a sub-agent, not a change to this feature.

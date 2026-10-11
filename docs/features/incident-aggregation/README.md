@@ -22,5 +22,5 @@ deliverable, so nothing that produced the conclusion is summarised away.
 | [testing.md](testing.md) | cases covered, fixtures, results |
 | [changelog.md](changelog.md) | dated entries |
 
-**Scope for the hackathon slice:** stdout and JSON-file sinks plus the PostgreSQL audit trail
+**Prototype scope:** stdout and JSON-file sinks plus the PostgreSQL audit trail
 (SQLite through P5; the engine changed in P6.0 — HLD §7.1). The HTTP surface is P7.

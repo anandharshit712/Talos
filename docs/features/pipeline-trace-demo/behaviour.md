@@ -7,7 +7,7 @@ presentation path, not a gate.
 
 ## The web chain
 
-`docs/submission/demo_web_chain.log`: four SQL injection payloads (tautology, union, error-based,
+`data/samples/demo_web_chain.log`: four SQL injection payloads (tautology, union, error-based,
 stacked — one per pattern class), then twelve `POST /login` failures against `admin` from the same
 source, then a `302` success. Produces three incidents: an `injection`/critical, then an
 `auth_failure` that rises from medium to high when the burst lands. The classifier routes the first
@@ -16,7 +16,7 @@ visible in the trace.
 
 ## The network chain
 
-`docs/submission/demo_network_chain.log`: twelve failed SSH logins for `root`, then an accepted one.
+`data/samples/demo_network_chain.log`: twelve failed SSH logins for `root`, then an accepted one.
 The brute-force detector fires at the eighth failure (medium/0.70) and re-reports at high/0.90 when
 the trailing success arrives — the escalation an analyst most needs to see.
 

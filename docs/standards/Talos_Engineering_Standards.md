@@ -145,7 +145,7 @@ Talos/
 │   ├── planning/                     build plans, phase breakdowns, milestone tracking
 │   ├── operations/                   run, deploy, configure, troubleshoot
 │   ├── research/                     competitive/threat research, sources
-│   └── submission/                   hackathon deliverables
+│   └── overview/                     project overview, problem statement
 │
 ├── scripts/
 │   ├── generate_sample_logs.py
@@ -720,7 +720,7 @@ code-side rows describe the layout the implementation now starts from, not pendi
 | `talos/output/api.py` | `src/talos/output/api/api_server.py` + `report_routes.py` | R2, R6 |
 | `talos/output/sinks.py` | `src/talos/output/sinks/json_file_sink.py`, `stdout_sink.py` | R3.1 — one sink per file |
 | `docs/Talos_HLD.md`, `Talos_LLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `Talos_Detailed_Architecture.pdf`, `Talos_Idea_OnePager.pdf` | `docs/architecture/` | R2 |
-| `docs/Talos_Problem_Statement_and_Solution_Document.md` | `docs/submission/` | R2 |
+| `docs/Talos_Problem_Statement_and_Solution_Document.md` | `docs/overview/` | R2 |
 | `docs/Talos_Project_Memory_Dump.md` | `docs/research/` | R2 |
 
 Detector, sub-agent, classifier, and store filenames from the LLD already comply and are unchanged.

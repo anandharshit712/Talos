@@ -1,4 +1,4 @@
-# Talos — submission overview
+# Talos — project overview
 
 **An open-source multi-agent system for attack detection, classification, and scope analysis.**
 
@@ -116,7 +116,7 @@ Two commitments shape everything:
 
 ## What is deliberately not here
 
-Stating the limits is part of the submission; a reviewer will find them anyway.
+Stating the limits is part of this document; a reviewer will find them anyway.
 
 - **Two domains only — web and network.** A scope limit on *breadth*, not on build quality:
   storage, concurrency, error handling and security posture inside those two are built to deploy.

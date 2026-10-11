@@ -22,5 +22,5 @@ chatter must not stop detection on the lines that do matter.
 | [testing.md](testing.md) | cases covered, fixtures, how to run |
 | [changelog.md](changelog.md) | dated entries |
 
-**Scope for the hackathon slice:** sshd syslog. RDP event logs are added in P5; netflow records
+**Prototype scope:** sshd syslog. RDP event logs are added in P5; netflow records
 map to `target` + `meta` and are deliberately not consumed by any detector yet.

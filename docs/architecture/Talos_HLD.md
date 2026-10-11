@@ -4,7 +4,7 @@
 **Document type:** High-Level Design
 **Scope of this document:** Talos as a product, narrowed to two domains — Web Application and Network. The narrowing is one of **breadth, not build quality**: everything inside those two domains is designed and built to run in a real deployment (see §1.5).
 **Status:** Baseline
-**Related documents:** `Talos_LLD.md` (Low-Level Design), `Talos_DFD.md` (Data Flow), `Talos_Architecture_Diagram.svg`, `../submission/Talos_Problem_Statement_and_Solution_Document.md`, `../standards/Talos_Engineering_Standards.md` (repo rules R1–R6), `../planning/Talos_Implementation_Plan.md`
+**Related documents:** `Talos_LLD.md` (Low-Level Design), `Talos_DFD.md` (Data Flow), `Talos_Architecture_Diagram.svg`, `../overview/Talos_Problem_Statement_and_Solution_Document.md`, `../standards/Talos_Engineering_Standards.md` (repo rules R1–R6), `../planning/Talos_Implementation_Plan.md`
 
 ---
 
@@ -33,7 +33,7 @@ Talos is being built as a product that could be deployed, not as a demo that sur
 A choice is never justified by "it is only a prototype"; it is justified by whether it survives deployment. Where a component is deliberately staged — storage is the clear case (§7.1) — the design names the trigger that forces the change and the phase that carries it.
 
 ### 1.3 Intended audience
-Contributors building or extending Talos, judges/reviewers evaluating the design, and security practitioners assessing whether the detection logic is trustworthy.
+Contributors building or extending Talos, reviewers evaluating the design, and security practitioners assessing whether the detection logic is trustworthy.
 
 ### 1.4 Definitions
 | Term | Meaning |
@@ -372,7 +372,7 @@ flowchart LR
 - For the demo there is no live production traffic; Juice Shop/DVWA/Cowrie stand in as realistic sources.
 
 **Constraints**
-- Fixed prototype deadline; scope frozen to web + network — a limit on **breadth only** (§1.5).
+- Scope frozen to web + network — a limit on **breadth only** (§1.5).
 - Free-tier hosted model rate limits.
 - **No container or orchestration tooling in this cycle.** Docker and Kubernetes are excluded because the development machine cannot carry them, so every dependency must install and run natively — PostgreSQL included. This constrains packaging and local tooling, not architecture.
 

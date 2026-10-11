@@ -30,6 +30,6 @@ reachable, and nothing a model returns can change `attack_detected`, a count, or
 | [testing.md](testing.md) | cases covered, fixtures, results |
 | [changelog.md](changelog.md) | dated entries |
 
-**Scope for the hackathon slice:** single-source and small-source-set stuffing. A run rotated
+**Prototype scope:** single-source and small-source-set stuffing. A run rotated
 across many addresses with few accounts each is a documented false negative — see
 [detection-logic.md](detection-logic.md#known-limits).

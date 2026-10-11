@@ -1,7 +1,7 @@
 # TALOS
 ### An Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Problem Statement and Detailed Solution Document**
-*Hackathon Prototype Scope: Web Application and Network Domains*
+*Prototype Scope: Web Application and Network Domains*
 
 **Companion documents:** `Talos_HLD.md`, `Talos_LLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`
 *(Markdown edition of `Talos_Problem_Statement_and_Solution_Document.docx`.)*
@@ -15,7 +15,7 @@
 4. [Agent Responsibility Matrix](#4-agent-responsibility-matrix)
 5. [Testing and Validation Strategy](#5-testing-and-validation-strategy)
 6. [Specialized Models Per Agent](#6-specialized-models-per-agent)
-7. [Roadmap Beyond the Hackathon](#7-roadmap-beyond-the-hackathon)
+7. [Roadmap](#7-roadmap)
 
 ---
 
@@ -59,11 +59,11 @@ There is a genuine opening for an open-source, multi-agent system that treats **
 ### 2.1 Vision
 Talos is an open-source, multi-agent AI system designed to detect, classify, and scope the large majority of present-day attack categories, across whatever domain they occur in: web application, network, and eventually cloud, endpoint, and Active Directory. The orchestrator, classifier, and sub-agent pattern is **domain-agnostic and attack-type-extensible by design**, so long-term coverage is meant to grow through community contribution rather than being fixed to what a single team can build in one sprint.
 
-### 2.2 Hackathon Scope vs. the Long-Term Product
+### 2.2 Prototype Scope vs. the Long-Term Product
 - **Long-term product:** a community-extensible platform aiming to cover most present-day attack categories across many telemetry domains.
-- **Hackathon prototype:** a fully working, tested **vertical slice** covering two domains — web application and network — proving that the architecture genuinely generalizes rather than being a diagram that only works for one case.
+- **Prototype:** a fully working, tested **vertical slice** covering two domains — web application and network — proving that the architecture genuinely generalizes rather than being a diagram that only works for one case.
 
-This distinction matters for how the project is presented: the hackathon build is **evidence of the architecture, not the finished product.** The honest answer to how far this eventually goes is "as far as the open-source community takes it."
+This distinction matters for how the project is presented: the prototype build is **evidence of the architecture, not the finished product.** The honest answer to how far this eventually goes is "as far as the open-source community takes it."
 
 ### 2.3 High-Level Architecture
 Telemetry flows through five conceptual layers:
@@ -89,7 +89,7 @@ The Orchestrator is the single entry point for all telemetry. It does not perfor
 - Expose the system's output over a documented API and as SIEM- or SOAR-compatible JSON.
 
 ### 3.2 Domain Agents
-A Domain Agent owns everything specific to one telemetry domain: how its logs are shaped, what a normal baseline looks like, and which type classifier and attack-type sub-agents apply. Two domain agents are built for the hackathon.
+A Domain Agent owns everything specific to one telemetry domain: how its logs are shaped, what a normal baseline looks like, and which type classifier and attack-type sub-agents apply. Two domain agents are built in the prototype.
 
 - **Web Application Domain Agent:** consumes HTTP access logs, WAF logs, and application logs. Normalizes requests, responses, headers, and payloads into a common schema before handing off to its type classifier.
 - **Network Domain Agent:** consumes authentication logs (SSH, RDP) and flow-level data. Normalizes connection attempts, source/destination pairs, and timing into a common schema before handing off to its type classifier.
@@ -116,7 +116,7 @@ The **Web Application Type Classifier Sub-Agent** inspects a normalized web even
 - **Deviation Scorer (child):** compares a new request's target object against that user's baseline, flags statistically significant deviations such as sequential ID enumeration or access to identifiers outside the user's normal range, and scopes the finding by identifying exactly which objects were accessed outside the expected pattern.
 
 ### 3.4 Network Domain — Type Classifier and Sub-Agent
-The **Network Type Classifier Sub-Agent** inspects normalized authentication and flow events and currently routes to a single fully built category for the hackathon: **Network Brute Force**. Port scanning and DDoS are designed for in the architecture and shown on the roadmap, but are not built out for the hackathon demo.
+The **Network Type Classifier Sub-Agent** inspects normalized authentication and flow events and currently routes to a single fully built category in the prototype: **Network Brute Force**. Port scanning and DDoS are designed for in the architecture and shown on the roadmap, but are not built out in the prototype.
 
 #### 3.4.1 Network Brute Force Sub-Agent
 **Specialization:** intentionally shares its statistical core with the web Authentication Failure Sub-Agent, since both are rate-based credential-attack detection, but is pointed at network authentication telemetry instead of HTTP logs. Delegates to two child sub-agents.
@@ -180,7 +180,7 @@ Every sub-agent is tested against **clean, attack-free traffic** from its own do
 ### 5.4 Validation Process
 - **Unit level:** each leaf sub-agent (e.g. SQL Injection Detector) is tested in isolation against its own labeled attack and benign dataset as soon as it is built, not deferred to the end.
 - **Integration level:** the full chain from ingestion → orchestrator → classifier → sub-agent is tested end-to-end per domain.
-- **System level:** the final three days of the build are reserved for full-pipeline rehearsal and demo scripting using a mixed, realistic traffic sample — not first-time testing of any individual component.
+- **System level:** the full pipeline is rehearsed end-to-end using a mixed, realistic traffic sample — not first-time testing of any individual component.
 
 ---
 
@@ -213,18 +213,18 @@ The table below reflects model families available as of this document's writing.
 | Access Pattern Baseliner | Long-context behavioral summarization | Mixtral 8x7B Instruct, or Llama 3.1 70B Instruct | 8x7B / 70B | Yes, typically available |
 | Deviation Scorer (IDOR) | Nuanced contextual judgment, fewer calls per event | Llama 3.1 70B Instruct, or Nemotron 4 340B Instruct for highest accuracy | 70B–340B | Yes, typically available |
 
-> **\* NVIDIA NIM** (accessed via `build.nvidia.com`) hosts many of these open-weight model families as ready-to-call API endpoints, including free, rate-limited API access intended for prototyping and evaluation. This matters directly for a hackathon timeline because it removes the need to provision GPU infrastructure to get a working demo, while the same open-weight models remain self-hostable later via tools like **vLLM** or **Ollama** for a fully open-source, infrastructure-independent long-term deployment.
+> **\* NVIDIA NIM** (accessed via `build.nvidia.com`) hosts many of these open-weight model families as ready-to-call API endpoints, including free, rate-limited API access intended for prototyping and evaluation. This matters directly for the prototype because it removes the need to provision GPU infrastructure to get a working demo, while the same open-weight models remain self-hostable later via tools like **vLLM** or **Ollama** for a fully open-source, infrastructure-independent long-term deployment.
 
 ### 6.4 Deployment Approach
-- **Hackathon demo:** call NVIDIA NIM's free-tier hosted API endpoints directly from each sub-agent, since this gets a working multi-model pipeline running fastest with zero GPU provisioning.
+- **Prototype:** call NVIDIA NIM's free-tier hosted API endpoints directly from each sub-agent, since this gets a working multi-model pipeline running fastest with zero GPU provisioning.
 - **Long-term open-source product:** since every model recommended above is open-weight, an adopter with no NVIDIA account or budget can self-host the same models via vLLM or Ollama, so the project never depends on one vendor's hosted availability to function.
 - **Verification step before committing:** confirm current model availability and free-tier limits directly at `build.nvidia.com`, since hosted catalogs and free-usage terms change over time and are not something this document can guarantee as current.
 
 ---
 
-## 7. Roadmap Beyond the Hackathon
+## 7. Roadmap
 - Complete remaining OWASP-aligned web categories where a genuine runtime signature exists — for example, **SSRF**.
-- Expand network coverage to **port scanning** and **DDoS**, both already designed for in the classifier but not built for the hackathon.
+- Expand network coverage to **port scanning** and **DDoS**, both already designed for in the classifier but not built in the prototype.
 - Add new domains: **cloud** (e.g. IAM misuse, storage exposure), **endpoint** (EDR telemetry), and **Active Directory** (lateral movement, credential dumping).
 - Publish a documented sub-agent interface so a community contributor can add a new attack-type sub-agent **without modifying the orchestrator**.
 - Explore fine-tuning smaller open-weight models on Talos's own labeled detection data as the project accumulates real usage.

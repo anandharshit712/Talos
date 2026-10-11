@@ -12,11 +12,12 @@ orchestration tooling this cycle; dependencies install natively.
 
 ## 1. Timeline Reality Check
 
-**Written 2026-08-17 against a 2026-09-04 submission — 18 working days.** The plan is built for 18 and
-names an explicit cut order (§8) so the deadline is met by dropping planned scope in a chosen sequence
+**Written 2026-08-17 against a 2026-09-04 target date — 18 working days.** The plan is built for 18 and
+names an explicit cut order (§8) so the target date is met by dropping planned scope in a chosen sequence
 rather than by shipping everything half-finished.
 
-**Superseded 2026-09-04: submission moved to 2026-10-09.** P0–P5 finished by Aug 19, well inside their
+**Superseded 2026-09-04: target date moved to 2026-10-09**, and dropped entirely on 2026-10-11 — Talos
+now has no external date. P0–P5 finished by Aug 19, well inside their
 day counts. The dated table below is kept as the original record; the live position is the build
 tracker's dashboard. With five weeks against six planned days of work, **§8's cut order is dormant** —
 every phase including P6 is built in full.
@@ -32,7 +33,7 @@ every phase including P6 is built in full.
 | **P6** Broken access control | D12–D14 | Aug 29–31 | IDOR baseliner + deviation scorer, **PostgreSQL migration** |
 | **P7** Output surface | D15 | Sep 1 | FastAPI, sinks, CLI polish |
 | **P8** Evaluation & calibration | D16–D17 | Sep 2–3 | precision/recall/F1, calibration curves, NFR evidence |
-| **P9** Demo & submission | D18 | Sep 4 | demo script, final docs, deliverables |
+| **P9** Demo & release | D18 | Sep 4 | demo script, final docs, release polish |
 
 **The P2 date is the one that matters.** If an end-to-end incident report is not being produced by
 Aug 21, the plan is behind and §8 cuts start immediately — not in September.
@@ -316,7 +317,7 @@ cases) in place of `detection-logic.md`.
 
 ### P8 — Evaluation & Calibration · D16–D17 (Sep 2–3)
 
-**Goal:** turn quality claims into measured numbers. This phase produces the evidence a judge asks for.
+**Goal:** turn quality claims into measured numbers. This phase produces the evidence a reviewer asks for.
 
 | Artifact | Est. LOC |
 |---|---|
@@ -335,12 +336,12 @@ updated with real numbers and every `README.md` status advanced to `stable`.
 
 ---
 
-### P9 — Demo & Submission · D18 (Sep 4)
+### P9 — Demo & Release · D18 (Sep 4)
 
 - Demo script: one web attack chain (SQLi → auth brute force) and one network chain (SSH brute force
   with a trailing success), each shown as raw log → agent pipeline trace → scoped `IncidentReport`.
   **The pipeline trace is the differentiator — show the reasoning, not just the verdict.**
-- Final pass: `docs/submission/` deliverables, README quickstart verified from a clean clone,
+- Final pass: `docs/overview/` docs and `data/samples/` demo chains, README quickstart verified from a clean clone,
   `make check` green, all R5 statuses `stable`.
 
 ---
@@ -440,15 +441,18 @@ A phase is complete only when **all seven** hold:
 
 ### 8.1 Cut order — drop in this sequence, never ad hoc
 
+**Dormant.** There is no target date (dropped 2026-10-11), so nothing below is being cut; the
+list stands as the agreed sequence should scope ever need trimming again.
+
 1. **RDP brute force detector** (P5) — SSH already proves the network domain; RDP is the same engine.
 2. **Credential stuffing detector** (P5) — brute force already proves the auth category.
 3. **Stored-XSS event-window correlation** (P4) — ship reflected-only XSS; document the limitation.
 4. **FastAPI surface** (P7) — CLI + JSON sink is a sufficient demo; the API is an integration story.
 5. **IDOR / broken access control** (P6) — **last resort.** It is the strongest depth argument in the
-   whole submission; cutting it weakens the differentiator more than cutting anything above.
+   whole project; cutting it weakens the differentiator more than cutting anything above.
 
 **Never cut:** the P2 walking skeleton, the P8 measured evaluation, or the pipeline-trace transparency
-in the demo. Those three *are* the submission's argument — a working end-to-end system, honest numbers,
+in the demo. Those three *are* the project's argument — a working end-to-end system, honest numbers,
 and visible multi-agent reasoning. Detector count is the least valuable thing on this list
 (`../research/Talos_Project_Memory_Dump.md`: breadth is not the differentiator).
 

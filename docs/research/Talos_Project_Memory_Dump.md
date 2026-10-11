@@ -1,13 +1,11 @@
 # Talos — Full Project Memory Dump
-*Compiled from two conversations: "Cybersecurity basics for hackathon project" and the follow-up planning/document session. Use this to resume work on a different system or in a fresh chat.*
+*Compiled from two conversations: "Cybersecurity basics for the project" and the follow-up planning/document session. Use this to resume work on a different system or in a fresh chat.*
 
 ---
 
 ## 1. Who You Are / Starting Point
 
 - Solid web and application development background, **no prior cybersecurity background** going in — cybersecurity knowledge was built up through this project's research and planning conversations.
-- Competing in a **multi-week hackathon**. Idea submission phase is complete. **Final prototype submission deadline: September 4.**
-- Received an automated idea profiling result: **"Low-risk enhancements with tangible benefits"** — explained as boilerplate/templated per-dimension text, not custom feedback, but still a positive signal for surviving an elimination round.
 
 ---
 
@@ -15,9 +13,9 @@
 
 **What it is:** An open source, multi-agent AI system that automates the **detection, classification, and scoping** of security incidents from live runtime telemetry.
 
-**Long-term vision (beyond the hackathon):** A community-extensible open source product aiming to eventually cover most present-day attack categories across many domains — web application, network, cloud, endpoint, and Active Directory. Coverage is meant to grow through community contribution, not be fixed to what one team builds in one sprint.
+**Long-term vision (beyond the prototype):** A community-extensible open source product aiming to eventually cover most present-day attack categories across many domains — web application, network, cloud, endpoint, and Active Directory. Coverage is meant to grow through community contribution, not be fixed to what one team builds in one sprint.
 
-**Hackathon scope:** A working proof-of-concept **vertical slice** covering only the web application and network domains — presented to judges as evidence the architecture generalizes, not as the finished product.
+**Prototype scope:** A working proof-of-concept **two-domain prototype** covering only the web application and network domains — evidence the architecture generalizes, not the finished product.
 
 **Naming journey:**
 - **Triagent** — rejected, name implies a fixed set of exactly three agents.
@@ -30,7 +28,7 @@
 
 1. **CI/CD is the wrong integration point.** CI/CD (SAST/SCA/secret scanning/DAST) catches vulnerabilities *before* shipping — a build-time problem. Live attack detection is a fundamentally different, runtime problem. Talos must plug into **live telemetry** (WAF/app logs, network flow, EDR data, cloud/AD audit logs), not a build pipeline.
 2. **Scoping, not classification, is the real bottleneck.** In a real incident response lifecycle (Preparation → Detection & Analysis → Containment → Eradication → Recovery → Lessons Learned), classification is fast once a pattern is recognized — figuring out **how far an attack spread** is the slow part, and often runs in parallel with containment rather than finishing before it. This is why Talos treats scoping as a first-class, dedicated step per attack type, not an afterthought.
-3. **"Full coverage of every attack type" is the wrong differentiator.** Incumbent platforms (see competitive research below) have years of engineering behind their breadth — a hackathon team can't out-cover them, and claiming shallow breadth invites judges to poke exactly at the weak spot. The winning differentiator is **depth and transparency** of multi-agent reasoning on a focused set of categories, not raw category count.
+3. **"Full coverage of every attack type" is the wrong differentiator.** Incumbent platforms (see competitive research below) have years of engineering behind their breadth — a small team can't out-cover them, and claiming shallow breadth invites reviewers to poke exactly at the weak spot. The winning differentiator is **depth and transparency** of multi-agent reasoning on a focused set of categories, not raw category count.
 4. **Not every OWASP Top 10 category is runtime-detectable.** Some are pre-deployment/process concerns with no traffic signature at all (see Section 6 — Explicitly Out of Scope). Building fake detection logic for these would weaken credibility, not help it.
 
 ---
@@ -89,7 +87,7 @@ Telemetry (WAF/app logs, later network flow/auth logs)
     - Deviation Scorer (child) — flags statistically significant deviations (e.g. sequential ID enumeration); scopes by exactly which objects were accessed outside the expected pattern.
 
 **Network Domain Agent** — normalizes SSH/RDP auth logs + flow data → hands off to Network Type Classifier.
-- **Network Type Classifier** — routes to the one fully-built category for the hackathon: Network Brute Force. (Port scan and DDoS are designed-for but not built for the hackathon.)
+- **Network Type Classifier** — routes to the one fully-built category in the prototype: Network Brute Force. (Port scan and DDoS are designed-for but not built in the prototype.)
   - **Network Brute Force Sub-Agent** — intentionally shares its statistical core with the web Auth Failure Sub-Agent (same rate-based logic, different telemetry source).
     - SSH Brute Force Detector (child).
     - RDP Brute Force Detector (child) — RDP brute force flagged as one of the most common real-world initial-access vectors feeding ransomware intrusions, which is why it's worth building fully rather than stubbing.
@@ -101,7 +99,7 @@ Telemetry (WAF/app logs, later network flow/auth logs)
 ## 6. Category Decisions
 
 ### Web/App domain — 3 fully functional categories
-1. **Injection** (SQLi + XSS) — built first, easiest fast win; plenty of public attack traffic (OWASP Juice Shop, PortSwigger labs), most recognizable to judges.
+1. **Injection** (SQLi + XSS) — built first, easiest fast win; plenty of public attack traffic (OWASP Juice Shop, PortSwigger labs), most recognizable to reviewers.
 2. **Authentication Failures** (brute force, credential stuffing) — second; rate/frequency-based, demos well visually (spike graph of failed attempts).
 3. **Broken Access Control (IDOR)** — built last, on purpose; hardest to build (needs learned per-user baselines, not payload matching) but the **strongest differentiator** — exactly the contextual, environment-learning detection that incumbents are weak at.
 
@@ -111,12 +109,12 @@ Telemetry (WAF/app logs, later network flow/auth logs)
 - DDoS — hardest to make genuinely robust in the timeframe (needs proper multi-vector traffic baselining); kept as roadmap, not built.
 
 ### Explicitly out of scope for runtime detection (roadmap-labeled, not "gaps")
-Not runtime-detectable regardless of time available — these are pre-deployment/process concerns, framed to judges as "a different tool's job, like a CI/CD security gate, not an incident detection agent":
+Not runtime-detectable regardless of time available — these are pre-deployment/process concerns, framed as "a different tool's job, like a CI/CD security gate, not an incident detection agent":
 - **A02 Cryptographic Failures** — mostly a config/implementation weakness, rarely a distinct traffic-level "attack."
 - **A04 Insecure Design** — an architecture review finding, not an attack event.
 - **A06 Vulnerable and Outdated Components** — dependency/CVE scanning (SCA), a pre-deployment problem.
 - **A09 Security Logging and Monitoring Failures** — literally about the *absence* of logs; can't detect via the thing that's missing.
-- (SSRF was floated as a possible 4th/5th web category earlier but was not included in the final 3 chosen for the hackathon build — it remains a roadmap item.)
+- (SSRF was floated as a possible 4th/5th web category earlier but was not included in the final 3 chosen for the prototype build — it remains a roadmap item.)
 
 ### Reference framework
 - **OWASP Top 10** used as the grounding taxonomy for web categories (deliberately fixed at 10 curated risk categories — there is no official "Top 15/20"; the real extension-of-granularity reference if a bigger roadmap number is wanted is **MITRE's CWE Top 25 Most Dangerous Software Weaknesses**).
@@ -136,7 +134,7 @@ Not runtime-detectable regardless of time available — these are pre-deployment
 
 **Practical rule established:** test each category as it's finished, not all at the end. The final 3 days are for end-to-end integration testing and demo rehearsal, not first-time testing of individual pieces — "we tested continuously and used the buffer to polish," not "we ran out of time to test."
 
-Also decided: since this is meant to be a real open-source product, design the sub-agent interface to be clean/documented enough that a community contributor could add a new attack-type sub-agent without touching the orchestrator — worth building in now while it's cheap, and a good thing to show judges as an open-source signal.
+Also decided: since this is meant to be a real open-source product, design the sub-agent interface to be clean/documented enough that a community contributor could add a new attack-type sub-agent without touching the orchestrator — worth building in now while it's cheap, and a visible open-source signal.
 
 ---
 
@@ -161,7 +159,7 @@ Established as required across **all** built categories, not optional polish:
 
 **Validation process:** unit-test each leaf sub-agent in isolation as soon as it's built → integration-test the full chain per domain → reserve the final 3 days for full-pipeline rehearsal with mixed, realistic traffic (not first-time testing).
 
-**Demo data sources called out specifically:** OWASP Juice Shop and DVWA (Damn Vulnerable Web App) — open-source apps deliberately built with OWASP-style vulnerabilities, good for generating realistic attack traffic to feed the pipeline as if it were live telemetry (since there's no real production traffic to plug into for a hackathon demo).
+**Demo data sources called out specifically:** OWASP Juice Shop and DVWA (Damn Vulnerable Web App) — open-source apps deliberately built with OWASP-style vulnerabilities, good for generating realistic attack traffic to feed the pipeline as if it were live telemetry (since there's no real production traffic to plug into for a prototype demo).
 
 ---
 
@@ -187,18 +185,15 @@ Established as required across **all** built categories, not optional polish:
 | Deviation Scorer (IDOR) | Nuanced contextual judgment, fewer calls per event | Llama 3.1 70B Instruct, or Nemotron 4 340B Instruct for highest accuracy | 70B–340B | Yes, typically available |
 
 **Deployment approach:**
-- **Hackathon demo:** call **NVIDIA NIM's free, rate-limited hosted API** (build.nvidia.com) directly from each sub-agent — fastest path to a working multi-model pipeline with zero GPU provisioning.
+- **Prototype demo:** call **NVIDIA NIM's free, rate-limited hosted API** (build.nvidia.com) directly from each sub-agent — fastest path to a working multi-model pipeline with zero GPU provisioning.
 - **Long-term open-source product:** every recommended model is open-weight, so an adopter with no NVIDIA account/budget can self-host the same models via **vLLM or Ollama** — the project never depends on one vendor's hosted availability to function.
 - **Action item before locking anything in:** verify current model availability and free-tier limits live at build.nvidia.com — hosted catalogs and free-usage terms change over time.
 
 ---
 
-## 11. Hackathon Submission Materials (already completed)
+## 11. Early PDFs (already completed)
 
-- **Idea Title field:** "Talos, an open source multi agent system for automated attack classification and scope finding"
-- **Post an Idea field:** "Talos is an open source multi agent system that classifies and scopes web and network attacks using specialized sub agents, giving smaller teams transparent, extensible incident response automation."
-- All submission text fields written to comply with the platform's character limits and allowed-character set (`A-Za-z0-9,.?!'()` only — no hyphens, colons, ampersands, slashes, or quotation marks).
-- Attachment constraints noted: <25 MB, formats doc/docx/xls/xlsx/msg/txt/pdf/jpeg/jpg/png/ppt/pptx, filenames limited to plain letters/numbers/underscores/spaces, ≤96 characters, no reused filenames, no special characters (`* | , \ : < > [ ] ( ) & $ # % ~ + -` all blocked).
+- **One-line description:** "Talos is an open source multi agent system that classifies and scopes web and network attacks using specialized sub agents, giving smaller teams transparent, extensible incident response automation."
 - **Two PDFs produced** using `reportlab`:
   1. A standalone detailed **architecture diagram** (canvas-based).
   2. A two-page **one-pager** (SimpleDocTemplate/Platypus) covering problem, architecture, OWASP-aligned scope, and differentiation.
@@ -211,19 +206,19 @@ Established as required across **all** built categories, not optional polish:
 
 ## 12. Documents Already Produced in This Second Chat
 
-1. **`Talos_Problem_Statement_and_Solution_Document.docx`** — a 13-page detailed problem statement + solution document covering: problem statement (context, core problem, who's affected, why existing solutions fall short, opportunity statement), solution overview (vision, hackathon-vs-long-term scope, high-level architecture), full agent architecture breakdown (every agent/sub-agent/child-detector and what it does), an agent responsibility matrix table, the testing/validation strategy, the specialized-models-per-agent section (including the NIM table above), and a roadmap section.
+1. **`Talos_Problem_Statement_and_Solution_Document.docx`** (now maintained as `docs/overview/Talos_Problem_Statement_and_Solution_Document.md`) — a 13-page detailed problem statement + solution document covering: problem statement (context, core problem, who's affected, why existing solutions fall short, opportunity statement), solution overview (vision, prototype-vs-long-term scope, high-level architecture), full agent architecture breakdown (every agent/sub-agent/child-detector and what it does), an agent responsibility matrix table, the testing/validation strategy, the specialized-models-per-agent section (including the NIM table above), and a roadmap section.
 2. **This memory dump** (`Talos_Project_Memory_Dump.md`) — the current file.
 
 Claude's own persistent memory (for this project) has also been updated with the condensed version of all key decisions in Sections 5–8 above, so a fresh chat within the same project should already have baseline context even without re-uploading this file.
 
 ---
 
-## 13. Post-Hackathon Roadmap (consolidated)
+## 13. Roadmap (consolidated)
 
-Everything below is *after* the hackathon submission — none of it is required for the September 4 prototype, but it's the agreed direction once that's done:
+Everything below comes *after* the two-domain prototype — none of it is required for the prototype, but it's the agreed direction once that's done:
 
-- **Complete remaining OWASP-aligned web categories that have a genuine runtime signature** — SSRF was the one specifically floated as the next candidate, since it was considered for the hackathon build but ultimately left out of the final 3.
-- **Expand network coverage** to port scanning and DDoS — both already designed for in the network classifier's structure, just not built for the hackathon.
+- **Complete remaining OWASP-aligned web categories that have a genuine runtime signature** — SSRF was the one specifically floated as the next candidate, since it was considered for the prototype build but ultimately left out of the final 3.
+- **Expand network coverage** to port scanning and DDoS — both already designed for in the network classifier's structure, just not built in the prototype.
 - **Add new domains**: cloud (e.g. IAM misuse, storage exposure), endpoint (EDR telemetry), and Active Directory (lateral movement, credential dumping) — this is the core of the long-term vision from Section 1, extending the same orchestrator/classifier/sub-agent pattern to domains beyond web and network.
 - **Publish a documented sub-agent interface** so a community contributor can add a new attack-type sub-agent without modifying the orchestrator — this is the concrete mechanism behind "community-extensible," not just a slogan.
 - **Explore fine-tuning smaller open-weight models on Talos's own labeled detection data** once the project has accumulated real usage, rather than relying solely on the general-purpose hosted models listed in Section 10.

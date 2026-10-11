@@ -21,7 +21,7 @@ class OwaspCategory(BaseModel):
     name: str = Field(min_length=1)
 
 
-#: OWASP Top 10 2021 categories that the hackathon slice can produce.
+#: OWASP Top 10 2021 categories that the prototype can produce.
 OWASP_CATEGORIES: dict[str, OwaspCategory] = {
     "A01:2021": OwaspCategory(category_id="A01:2021", name="Broken Access Control"),
     "A03:2021": OwaspCategory(category_id="A03:2021", name="Injection"),

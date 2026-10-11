@@ -17,7 +17,7 @@ from talos.ingestion.parsers.network_log_parser import NetworkLogParser
 from talos.ingestion.parsers.web_log_parser import WebLogParser
 from talos.output.demo_trace_engine import DEMO_CHAINS, build_trace
 
-SUBMISSION = Path(__file__).resolve().parents[3] / "docs" / "submission"
+SAMPLES = Path(__file__).resolve().parents[3] / "data" / "samples"
 CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
 
 
@@ -35,7 +35,7 @@ def settings() -> TalosSettings:
 
 
 def _trace(name: str, parser: Any, settings: TalosSettings):  # type: ignore[no-untyped-def]
-    lines = (SUBMISSION / name).read_text(encoding="utf-8").splitlines()
+    lines = (SAMPLES / name).read_text(encoding="utf-8").splitlines()
     return build_trace(name, lines, parser, settings, baseline_store=_NoBaseline())
 
 
@@ -87,7 +87,7 @@ def test_the_demo_chains_are_committed_not_just_present() -> None:
     """A chain that exists only on the author's disk is a demo that crashes on a fresh clone.
 
     `.gitignore` carries a blanket `*.log` for runtime artifacts, with carve-outs for the corpora
-    that are source rather than output. `docs/submission/` was not among them, so both prepared
+    that are source rather than output. The chains' first home was not among them, so both prepared
     chains were untracked: every check passed locally and `talos demo` died on a missing file for
     anyone who cloned the repository. Caught by running the README quickstart in a clean clone,
     which is what this test makes cheap to repeat.

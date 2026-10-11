@@ -3,7 +3,7 @@
 **Status:** stable
 **Code:** `src/talos/output/demo_trace_engine.py`, `src/talos/cli/main_cli.py` (`talos demo`),
 `src/talos/output/api/trace_routes.py`, `ui/` (the browser face)
-**Data:** `docs/submission/demo_web_chain.log`, `docs/submission/demo_network_chain.log`
+**Data:** `data/samples/demo_web_chain.log`, `data/samples/demo_network_chain.log`
 
 The P9 differentiator. A WAF prints "blocked"; Talos shows *why*. `talos demo` runs two prepared
 attack chains through the real pipeline and prints the annotated trace — for every event, what it

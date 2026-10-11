@@ -18,7 +18,7 @@ come from secondary sources and are marked as such — treat them as a starting 
 test, not as a contract.
 
 **Constraint from the brief:** hosted inference only. No local models, so vLLM and Ollama are out of
-scope for the slice and every candidate below is a hosted free tier.
+scope for the prototype and every candidate below is a hosted free tier.
 
 ---
 

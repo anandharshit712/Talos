@@ -230,8 +230,8 @@ class DemoChain:
     filename: str
 
     def path(self) -> Path:
-        """The committed log, which is also a submission artifact (``docs/submission/``)."""
-        return repository_root() / "docs" / "submission" / self.filename
+        """The committed log, kept with the other sample logs (``data/samples/``)."""
+        return repository_root() / "data" / "samples" / self.filename
 
     def lines(self) -> list[str]:
         return self.path().read_text(encoding="utf-8").splitlines()

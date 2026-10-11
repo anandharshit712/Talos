@@ -20,7 +20,7 @@ PACKAGE_NAME: Final = "talos"
 DOMAIN_WEB: Final = "web"
 DOMAIN_NETWORK: Final = "network"
 
-#: Every domain the hackathon slice routes. Matches ``NormalizedEvent.domain``.
+#: Every domain the prototype routes. Matches ``NormalizedEvent.domain``.
 DOMAINS: Final[tuple[str, ...]] = (DOMAIN_WEB, DOMAIN_NETWORK)
 
 # --- Attack categories ---------------------------------------------------------------------
