@@ -10,7 +10,7 @@ description = "Multi-agent system for attack detection, classification, and scop
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Harshit Anand" }]
 keywords = ["security", "detection", "multi-agent", "mitre-attack", "owasp"]
 

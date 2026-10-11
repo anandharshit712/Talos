@@ -32,6 +32,7 @@ ROOT_FILE_ALLOWLIST = frozenset(
         "README.md",
         "CLAUDE.md",
         "LICENSE",
+        "NOTICE",
         "CHANGELOG.md",
         "pyproject.toml",
         "uv.lock",

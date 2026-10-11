@@ -44,7 +44,8 @@ Nothing may exist at the repository root unless it appears below.
 ```
 README.md                  project entry point, points into docs/
 CLAUDE.md                  agent-facing operating rules (cites this document)
-LICENSE                    open-source license
+LICENSE                    open-source license (Apache-2.0)
+NOTICE                     Apache-2.0 attribution notice
 CHANGELOG.md               release-level changes
 pyproject.toml             package metadata, deps, tool config, console entry points
 uv.lock                    resolved dependency lock (or requirements.lock)
