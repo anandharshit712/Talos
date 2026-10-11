@@ -174,4 +174,4 @@ file. `python tools/checks/check_feature_docs.py` will tell you if it is missing
 
 ## License
 
-Not yet chosen — see the `TODO` in `pyproject.toml`. Talos is intended to be open-source.
+Copyright 2026 Harshit Anand. Licensed under the [Apache License, Version 2.0](LICENSE).

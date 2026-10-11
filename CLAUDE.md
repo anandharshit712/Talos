@@ -54,9 +54,9 @@ paths — do not let a second copy of that wiring appear.
   finished. Reachable with no model at all, because a UTF-8 payload in a request path is copied
   into the evidence. The CLI now forces UTF-8 on stdout/stderr.
 
-**The one open item is `LICENSE`** — deferred by the owner twice (2026-09-07, 2026-09-18). Every
-doc calls Talos open-source and `pyproject.toml` carries the TODO, so the repository claims a
-license it does not grant. Do not choose one on the owner's behalf; raise it, do not resolve it.
+**Licensed Apache-2.0** (chosen by the owner 2026-10-11): `LICENSE` is the verbatim text, the
+SPDX id is in `pyproject.toml`. There is no external deadline — Talos is a standalone open-source
+project.
 Deferred with triggers: SSH/RDP real capture, hard-negative outcome-calibration.
 [docs/planning/Talos_Build_Tracker.md](docs/planning/Talos_Build_Tracker.md) is the live record —
 every phase, section, file, test, and gate. **Tick its boxes in the same commit as the work.**

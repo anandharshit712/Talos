@@ -83,9 +83,8 @@ column is the record.
 - [x] `.env.example`, `.gitignore`, `.gitattributes`, `.pre-commit-config.yaml`
 - [x] `scripts/run_checks.ps1` — Windows path with no `make`
 - [x] Directory skeleton + `__init__.py` files (standards §2.1 tree)
-- [ ] `LICENSE` — **open item, deferred by the owner** (2026-09-07 "for now none", 2026-09-18
-      "still none"). Every design doc calls Talos open-source and `pyproject.toml` carries the
-      TODO, so the repository claims a license it does not grant. Open by decision, not oversight.
+- [x] `LICENSE` — Apache-2.0, chosen by the owner 2026-10-11 after deferring it twice
+      (2026-09-07, 2026-09-18). Verbatim text at the root, SPDX id in `pyproject.toml`.
 
 ### P0.2 Rule checkers
 
@@ -942,9 +941,7 @@ the gate below is not met by them.
       test now asserts both chains are tracked by git.
 - [x] README quickstart verified from a clean clone — clone, venv, `pip install -e ".[dev]"`,
       `talos demo`, `npm install && npm run build`, `talos serve`, `/ui`.
-- [ ] `LICENSE` — **owner deferred it twice ("for now none", 2026-09-07; "still none", 2026-09-18)**.
-      Open by decision, not by oversight. `pyproject.toml` TODO stands, and every doc still calls
-      Talos open-source, which is the inconsistency that remains.
+- [x] `LICENSE` — Apache-2.0, chosen by the owner 2026-10-11 (see P0.1).
 - [x] `make check` green; all R5 statuses `stable`
 - [x] Final push
 
@@ -975,7 +972,7 @@ sequence should a phase overrun badly enough to need it again.
 
 | Item | Raised | Owner phase | Note |
 |---|---|---|---|
-| `LICENSE` not chosen | P0 | **carried past P9** | Deferred by the owner twice (2026-09-07, 2026-09-18). Open by decision, not oversight — but every doc still calls Talos open-source and `pyproject.toml` still carries the TODO, so the repository currently claims a license it does not grant. One file closes it. |
+| `LICENSE` not chosen | P0 | **resolved 2026-10-11** | Apache-2.0, chosen by the owner after two deferrals (2026-09-07, 2026-09-18). The repository now grants the license every doc claimed. |
 | NIM model IDs are placeholders | P1 | P3 | verify at `build.nvidia.com` **before** writing client code |
 | Fixture corpus not started | P0 | P8 | plan §8 says collect during downtime, not at P8 |
 | ~~`EventWindowStore` TTL/size knobs not in config~~ | P1 | **done P2** | `talos.storage` in `default.yaml` |
@@ -998,6 +995,7 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.19 | 2026-10-11 | **`LICENSE` closed: Apache-2.0**, chosen by the owner. Verbatim text at the root; `license = "Apache-2.0"` + `license-files` in `pyproject.toml` (setuptools floor raised to 77, the first to read an SPDX string); README and `CLAUDE.md` updated. No open items remain. Pushed together with 1.18. |
 | 1.18 | 2026-10-11 | External deadline dropped; Talos continues as a standalone open-source project. Every reference to the event and its deadline removed from docs and code; `docs/submission/` split — the demo chains moved to `data/samples/` (already carved out of `*.log`), the two documents to `docs/overview/` (`Talos_Submission_Overview.md` renamed `Talos_Project_Overview.md`). |
 | 1.17 | 2026-09-18 | **P9 done and pushed — the build is feature-complete.** The trace visualiser (`ui/`, React + Tailwind, served at `/ui`) and the two routes behind it; the chain wiring moved into `demo_trace_engine` so the terminal and the browser provably run one computation. The project overview written (now `docs/overview/Talos_Project_Overview.md`). Two defects the phase exposed, neither of which any local check could see: **every routed LLM call had been falling through to the templated path since P3** (Groq spells the reasoning field `reasoning`, NIM spells it `reasoning_content`; and a reasoning model spent its whole answer budget thinking) — 7m+/`used_llm=false` became 8.3s/`used_llm=true`; and **both demo chains were untracked**, swallowed by `.gitignore`'s `*.log`, so the demo crashed on any fresh clone. Found by the clean-clone quickstart. A UTF-8 output crash fell out of the first fix: a model narrative containing U+2011 killed the run at print time on a cp1252 console, reachable with no model at all via a UTF-8 payload in a request path. LICENSE remains open by the owner's decision. |
 | 1.16 | 2026-09-07 | **P8 done and pushed.** Web windowed detectors captured through nginx too (brute force, stuffing, IDOR + benign counterparts); all detectors measured on real corpora — SQLi 1.00/0.89, XSS 1.00/0.98, the four windowed 1.00/1.00, 0 FP over 459 events. Calibration measured and resolved honestly: unmeasurable in-distribution (0 wrong verdicts), `calibration:` left empty on purpose, the one overconfident regime (attack vocabulary in prose) found by an adversarial probe and pinned by a test. One lossless precision win fell out — `union_select` requires a column list now. `Talos_Evaluation_Results.md` written; all feature statuses `stable`. SSH/RDP capture and hard-negative calibration deferred with triggers. |

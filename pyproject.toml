@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77 is the first release that reads an SPDX `license` string (PEP 639).
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,8 +9,8 @@ version = "0.1.0"
 description = "Multi-agent system for attack detection, classification, and scope analysis"
 readme = "README.md"
 requires-python = ">=3.11"
-# TODO(P0): add `license` + a root LICENSE file once the license is chosen.
-# Every design doc calls Talos open-source, but picking the license is not a build decision.
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "Harshit Anand" }]
 keywords = ["security", "detection", "multi-agent", "mitre-attack", "owasp"]
 
