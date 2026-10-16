@@ -960,7 +960,7 @@ The machine can carry Docker now; native install stays primary (LLD §16.17).
 - [x] Verified: fresh `down -v` → `up --build` healthy; `/healthz`, `/ui`, `/trace/chains` served;
       six owner-supplied end-to-end scenarios (43 incidents) all match expected and match the
       native run apart from random event ids.
-- [ ] Pushed
+- [x] Pushed
 
 ---
 
@@ -1012,7 +1012,7 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
-| 1.21 | 2026-10-16 | **Optional Docker packaging** added (`deploy/docker/Dockerfile`, `deploy/compose/talos_stack.yaml`, root `.dockerignore`, runbook `Talos_Docker_Deployment.md`); the "no Docker this cycle" constraint relaxed to "native first, Docker optional, no Kubernetes" in CLAUDE.md, HLD, LLD (§16.17) and the overview. Image must install editable — a plain install silently drops every YAML file. Verified against the six end-to-end scenarios. Committed, not pushed. |
+| 1.21 | 2026-10-16 | **Optional Docker packaging** added (`deploy/docker/Dockerfile`, `deploy/compose/talos_stack.yaml`, root `.dockerignore`, runbook `Talos_Docker_Deployment.md`); the "no Docker this cycle" constraint relaxed to "native first, Docker optional, no Kubernetes" in CLAUDE.md, HLD, LLD (§16.17) and the overview. Image must install editable — a plain install silently drops every YAML file. Verified against the six end-to-end scenarios. Pushed. |
 | 1.20 | 2026-10-11 | Apache `NOTICE` file added at the root (copyright line), allowed in standards §1.1 and `check_structure.py`, and shipped in the wheel via `license-files`. |
 | 1.19 | 2026-10-11 | **`LICENSE` closed: Apache-2.0**, chosen by the owner. Verbatim text at the root; `license = "Apache-2.0"` + `license-files` in `pyproject.toml` (setuptools floor raised to 77, the first to read an SPDX string); README and `CLAUDE.md` updated. No open items remain. Pushed together with 1.18. |
 | 1.18 | 2026-10-11 | External deadline dropped; Talos continues as a standalone open-source project. Every reference to the event and its deadline removed from docs and code; `docs/submission/` split — the demo chains moved to `data/samples/` (already carved out of `*.log`), the two documents to `docs/overview/` (`Talos_Submission_Overview.md` renamed `Talos_Project_Overview.md`). |
