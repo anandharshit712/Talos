@@ -947,6 +947,23 @@ the gate below is not met by them.
 
 ---
 
+## Post-release — optional container packaging (2026-10-16)
+
+The machine can carry Docker now; native install stays primary (LLD §16.17).
+
+- [x] `deploy/docker/Dockerfile` — UI build stage + Python 3.12 editable install at `/app`,
+      non-root, healthcheck on `/healthz`. Editable is required: a plain `pip install .` resolves
+      `repository_root()` into site-packages and silently runs on model defaults (found that way).
+- [x] `deploy/compose/talos_stack.yaml` — `postgres:17`, one-shot `migrate`, `talos serve` on
+      `127.0.0.1` only; provider keys via optional `env_file`. `.dockerignore` keeps `.env` out.
+- [x] Runbook `docs/operations/Talos_Docker_Deployment.md`; README "Or on Docker".
+- [x] Verified: fresh `down -v` → `up --build` healthy; `/healthz`, `/ui`, `/trace/chains` served;
+      six owner-supplied end-to-end scenarios (43 incidents) all match expected and match the
+      native run apart from random event ids.
+- [ ] Pushed
+
+---
+
 ## Cut order (plan §8.1) — **dormant since 2026-09-04**, drop in this sequence if it revives
 
 The target date moved to 2026-10-09 and was dropped entirely on 2026-10-11; with no target date, nothing below is being cut. The list stands as the agreed
@@ -995,6 +1012,7 @@ sequence should a phase overrun badly enough to need it again.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.21 | 2026-10-16 | **Optional Docker packaging** added (`deploy/docker/Dockerfile`, `deploy/compose/talos_stack.yaml`, root `.dockerignore`, runbook `Talos_Docker_Deployment.md`); the "no Docker this cycle" constraint relaxed to "native first, Docker optional, no Kubernetes" in CLAUDE.md, HLD, LLD (§16.17) and the overview. Image must install editable — a plain install silently drops every YAML file. Verified against the six end-to-end scenarios. Committed, not pushed. |
 | 1.20 | 2026-10-11 | Apache `NOTICE` file added at the root (copyright line), allowed in standards §1.1 and `check_structure.py`, and shipped in the wheel via `license-files`. |
 | 1.19 | 2026-10-11 | **`LICENSE` closed: Apache-2.0**, chosen by the owner. Verbatim text at the root; `license = "Apache-2.0"` + `license-files` in `pyproject.toml` (setuptools floor raised to 77, the first to read an SPDX string); README and `CLAUDE.md` updated. No open items remain. Pushed together with 1.18. |
 | 1.18 | 2026-10-11 | External deadline dropped; Talos continues as a standalone open-source project. Every reference to the event and its deadline removed from docs and code; `docs/submission/` split — the demo chains moved to `data/samples/` (already carved out of `*.log`), the two documents to `docs/overview/` (`Talos_Submission_Overview.md` renamed `Talos_Project_Overview.md`). |

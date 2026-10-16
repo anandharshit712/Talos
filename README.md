@@ -92,9 +92,8 @@ talos serve                 # then open http://127.0.0.1:8000/ui
 
 Paste a payload into the page, run it, and watch which detector claims it and why.
 
-Talos records every incident in PostgreSQL (16 or newer, installed natively -- there is no
-container this cycle). Create a role and a database for it, put the DSN in `.env` as
-`TALOS_DB_DSN`, then apply the schema and scan a log:
+Talos records every incident in PostgreSQL (16 or newer). Create a role and a database for it,
+put the DSN in `.env` as `TALOS_DB_DSN`, then apply the schema and scan a log:
 
 ```bash
 createdb talos && createuser talos --pwprompt   # or the equivalent in psql / pgAdmin
@@ -113,6 +112,20 @@ talos replay tests/fixtures/logs/network_ssh_brute_force_sshd.log --year 2026
 
 `talos serve` binds loopback by default. Talos has no authentication, so any other bind address
 publishes an unauthenticated incident feed -- `--host 0.0.0.0` works and says so in the log.
+
+### Or on Docker
+
+PostgreSQL, the migrations, and the service (with `/ui` built in) in one stack, published on
+`127.0.0.1:8000`:
+
+```bash
+docker compose -f deploy/compose/talos_stack.yaml up -d --build
+curl http://127.0.0.1:8000/healthz
+```
+
+Provider keys come from `.env` at run time and never enter the image. Configuration, replaying
+logs into the container, and the security posture are in
+[Talos_Docker_Deployment.md](docs/operations/Talos_Docker_Deployment.md).
 
 Reports go to stdout as JSON and to `out/reports/`; diagnostics and the run summary go to stderr,
 so `talos scan file.log | jq` works unfiltered. The fixture above produces two incidents — the

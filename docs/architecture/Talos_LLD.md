@@ -2,7 +2,7 @@
 
 **Project:** Talos — Open-Source Multi-Agent System for Attack Detection, Classification, and Scope Analysis
 **Document type:** Low-Level Design
-**Revision:** 1.15 (2026-09-07) — see §16
+**Revision:** 1.17 (2026-10-16) — see §16
 **Companion documents:** `Talos_HLD.md`, `Talos_DFD.md`, `Talos_Architecture_Diagram.svg`, `../standards/Talos_Engineering_Standards.md`
 **Scope:** Component internals, data contracts, interfaces, per-detector algorithms, configuration, and error handling for the current slice (Web + Network) — a limit on breadth only, see HLD §1.5. Language/idioms shown in Python 3.11+ with Pydantic-style models; they are illustrative contracts, not final code.
 
@@ -841,7 +841,7 @@ because the implicit version was being read as licence to under-build.
 | `timestamptz` replaces ISO-8601 `TEXT` for `created_at` | §4.2 | `recent()` orders by `created_at DESC` on a text column. `UtcDatetime` currently keeps that sort correct by construction; a column type should not depend on an upstream validator holding. |
 | `report_json TEXT` → `jsonb` + GIN | §4.2 | The full report is stored verbatim so a record survives column drift. On `jsonb` the nested verdicts, detectors, and evidence become queryable without unnesting — which is what makes the audit trail an audit trail rather than a blob. |
 | Stores become `async` over `asyncpg` | §3, §4.2 | `sqlite3` is synchronous inside an `asyncio` orchestrator: every write blocks the event loop. The `VerdictRecorder` and `BaselineReader` Protocols absorb the change — no agent or detector is affected. |
-| **No container or orchestration tooling this cycle** | HLD §9, §13 | The development machine cannot carry Docker or Kubernetes, so every dependency must install natively — PostgreSQL does. This constrains packaging, not architecture; nothing in the design assumes a container runtime. |
+| **No container or orchestration tooling this cycle** *(superseded in part by §16.17)* | HLD §9, §13 | The development machine cannot carry Docker or Kubernetes, so every dependency must install natively — PostgreSQL does. This constrains packaging, not architecture; nothing in the design assumes a container runtime. |
 | `EventWindowStore` stays in memory | §12 | Restart loses in-flight windows. Recorded as a known limit with a named owner phase (tracker, open items) rather than silently accepted — the fix is persistence or replay-on-start, and neither belongs in P6. |
 
 ### 16.6 Revision 1.6 — code brought up to the 1.5 decisions (2026-08-18)
@@ -1002,6 +1002,19 @@ The second half is P9's browser face.
 | **`output.api.max_trace_log_chars` / `max_trace_log_lines`** | §2.1 | `POST /trace` runs whatever text it is given through parsers and detectors. Handling is unchanged — log content was already data rather than instruction (§11) — so the new exposure is volume, and it is bounded in config rather than by the process's memory. |
 | **The trace runs on a worker thread** | §2.1 | `build_trace` owns its event loop (`asyncio.run`), so calling it inside a route would raise, and running it inline would block every other request for the length of the scan. |
 | **`ui/`, a new root directory** | §2.1 tree, standards §1.1 | A Vite/React/Tailwind page, built to `ui/dist/` and mounted at `/ui`. It is a root directory rather than a subtree of `src/`, because R2 requires every directory under `src/` to be an importable Python package. Its absence is not an error: `ui/dist/` is git-ignored, and an unbuilt `/ui` answers 503 with the command that builds it rather than 404-ing into what looks like a broken deployment. |
+
+### 16.17 Revision 1.17 — optional container packaging (2026-10-16)
+
+The development machine can now carry Docker, so the §16.5 exclusion is relaxed for packaging
+only. The native install stays primary and must keep working; nothing in `src/` changed.
+
+| Change | Where | Why |
+|---|---|---|
+| **`deploy/docker/Dockerfile`** — Node stage builds `ui/dist/`, Python 3.12 stage installs Talos **editable** at `/app`, non-root, healthcheck on `/healthz` | standards §2.1 `deploy/docker/` | `repository_root()` is `parents[3]` of `talos/core/settings.py`. A non-editable install puts that file in site-packages, the root resolves to `/usr/local/lib/python3.12`, and `load_config_mapping` skips every YAML file as "not present" — the service runs on model defaults with no error. First found exactly that way: an image built with `pip install .` passed every end-to-end scenario on defaults alone. Editable keeps the repository shape the code assumes, with no code change. |
+| **`deploy/compose/talos_stack.yaml`** — `postgres:17`, a one-shot `migrate`, `talos serve` | standards §2.1 `deploy/compose/` | Migrations stay a separate step (`apply_migrations.py`), as natively; the API starts only after they succeed. Port published on `127.0.0.1` only, because the API has no authentication (§2.1) and the in-container bind must be `0.0.0.0`. |
+| **`.dockerignore`** at the root | standards §1.1 | `.env` never enters an image; provider keys arrive at run time through the stack's optional `env_file`. |
+
+Kubernetes remains out of scope.
 
 
 ---

@@ -1,0 +1,64 @@
+# Talos on PostgreSQL: database, migrations, report API.
+#
+#   docker compose -f deploy/compose/talos_stack.yaml up -d --build
+#   curl http://127.0.0.1:8000/healthz
+#
+# Runbook: docs/operations/Talos_Docker_Deployment.md
+
+name: talos
+
+x-talos-env: &talos-env
+  TALOS_DB_DSN: postgresql://talos:${TALOS_DB_PASSWORD:-talos}@db:5432/talos
+
+# On both services that run the image, so neither tries to pull a talos:local that does not
+# exist on a registry. The second build is a cache hit.
+x-talos-build: &talos-build
+  context: ../..
+  dockerfile: deploy/docker/Dockerfile
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: talos
+      POSTGRES_PASSWORD: ${TALOS_DB_PASSWORD:-talos}
+      POSTGRES_DB: talos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U talos -d talos"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  # One-shot: applies db/migrations/postgres/ and exits. Re-running is a no-op (ledger table).
+  migrate:
+    image: talos:local
+    build: *talos-build
+    environment: *talos-env
+    command: ["python", "scripts/apply_migrations.py", "--engine", "postgres"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  talos:
+    image: talos:local
+    build: *talos-build
+    environment:
+      <<: *talos-env
+      # Every TALOS_* setting passes through, e.g. TALOS_LLM__ENABLED=false for the
+      # statistical path only.
+      TALOS_LLM__ENABLED: ${TALOS_LLM__ENABLED:-true}
+    # Provider keys, if present. The image never contains .env (.dockerignore).
+    env_file:
+      - path: ../../.env
+        required: false
+    # Loopback only: the API has no authentication.
+    ports:
+      - "127.0.0.1:${TALOS_PORT:-8000}:8000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+volumes:
+  pgdata:

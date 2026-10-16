@@ -1,0 +1,30 @@
+# Build context for deploy/docker/Dockerfile. Secrets never enter an image: provider keys reach
+# the container through the compose stack's env_file at run time.
+.env
+.env.*
+!.env.example
+config/local.yaml
+
+.git
+.github
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+build
+dist
+out
+reports
+*.log
+!data/samples/*.log
+
+ui/node_modules
+ui/dist
+ui/*.tsbuildinfo
+
+# local-only, never committed (.git/info/exclude)
+talos_test_scenarios

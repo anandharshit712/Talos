@@ -374,7 +374,7 @@ flowchart LR
 **Constraints**
 - Scope frozen to web + network — a limit on **breadth only** (§1.5).
 - Free-tier hosted model rate limits.
-- **No container or orchestration tooling in this cycle.** Docker and Kubernetes are excluded because the development machine cannot carry them, so every dependency must install and run natively — PostgreSQL included. This constrains packaging and local tooling, not architecture.
+- **Native install first; containers optional; no orchestration.** Every dependency must install and run natively — PostgreSQL included. Since 2026-10-16 a Docker image and compose stack (`deploy/`, runbook `docs/operations/Talos_Docker_Deployment.md`) package the same service as an alternative, never a requirement. Kubernetes stays out. This constrains packaging and local tooling, not architecture.
 
 **Risks & mitigations**
 | Risk | Mitigation |

@@ -120,8 +120,8 @@ Stating the limits is part of this document; a reviewer will find them anyway.
 
 - **Two domains only — web and network.** A scope limit on *breadth*, not on build quality:
   storage, concurrency, error handling and security posture inside those two are built to deploy.
-- **No Docker or Kubernetes this cycle.** The development machine cannot carry them, so everything
-  installs and runs natively. This constrains packaging, not architecture.
+- **Native first, Docker optional, no Kubernetes.** Everything installs and runs natively; a
+  Docker image and compose stack (`deploy/`) package the same service as an alternative.
 - **SSH/RDP corpora are synthetic.** Capturing them needs a live sshd and a brute-force tool.
   The trigger to fix it is recorded rather than quietly ignored.
 - **The confidence curve is empty on purpose.** The statistical path produces zero wrong verdicts

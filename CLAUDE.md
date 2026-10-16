@@ -105,9 +105,12 @@ whether they survive a real deployment. **"It's only a prototype" is never a rea
 weaker option.** Where something is deliberately staged, the design names the trigger and the
 phase that carries it (HLD §1.5).
 
-One carve-out: **no Docker or Kubernetes this cycle** — the development machine cannot carry them.
-Dependencies must install and run natively. This constrains packaging and local tooling, not
-architecture.
+**Docker is optional packaging, never a requirement** (added 2026-10-16, once the machine could
+carry it): `deploy/docker/Dockerfile` + `deploy/compose/talos_stack.yaml`, runbook
+`docs/operations/Talos_Docker_Deployment.md`. Dependencies must still install and run natively —
+the native quickstart is the primary path. The image installs Talos **editable** at `/app` because
+`repository_root()` locates `config/`; a plain `pip install .` silently drops every YAML file.
+No Kubernetes.
 
 **Storage:** SQLite through P5, **PostgreSQL from P6** (HLD §7.1, LLD §16.5). The trigger is
 `BaselineStore` — SQLite's write lock is database-wide, so per-account locking is unachievable and
